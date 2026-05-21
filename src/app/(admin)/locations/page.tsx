@@ -296,7 +296,7 @@ export default function LocationsPage() {
     <div className="space-y-6">
       {toast && (
         <div className={cn(
-          "fixed top-4 right-4 z-50 flex items-center gap-2 px-4 py-2.5 rounded text-[13px] font-medium border",
+          "fixed top-4 right-4 z-50 flex items-center gap-2 px-4 py-2.5 rounded text-ds-13 font-medium border",
           toast.type === "success" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-red-50 text-red-700 border-red-200"
         )}>
           {toast.type === "success" ? <CheckCircle2 className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
@@ -306,19 +306,19 @@ export default function LocationsPage() {
 
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-[17px] font-semibold text-[#111318] tracking-tight">SKU Lokacije</h1>
-          <p className="text-[13px] text-[#555d6b] mt-0.5">Skladišne lokacije i raspored prolaza.</p>
+          <h1 className="text-ds-17 font-semibold text-ds-text-primary tracking-tight">SKU Lokacije</h1>
+          <p className="text-ds-13 text-ds-text-secondary mt-0.5">Skladišne lokacije i raspored prolaza.</p>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={exportCsv} className="inline-flex items-center justify-center p-2 bg-white border border-[#e4e7eb] text-[#555d6b] rounded hover:bg-gray-50 transition-colors cursor-pointer" title="Izvezi CSV">
+          <button onClick={exportCsv} className="inline-flex items-center justify-center p-2 bg-white border border-ds-border text-ds-text-secondary rounded hover:bg-gray-50 transition-colors cursor-pointer" title="Izvezi CSV">
             <FileDown className="w-4 h-4" />
           </button>
-          <label className="inline-flex items-center gap-2 px-3.5 py-2 bg-white border border-[#e4e7eb] text-[#111318] text-[13px] font-medium rounded hover:bg-gray-50 transition-colors cursor-pointer">
-            <Upload className="w-3.5 h-3.5 text-[#8b919e]" />
+          <label className="inline-flex items-center gap-2 px-3.5 py-2 bg-white border border-ds-border text-ds-text-primary text-ds-13 font-medium rounded hover:bg-gray-50 transition-colors cursor-pointer">
+            <Upload className="w-3.5 h-3.5 text-ds-text-muted" />
             CSV Uvoz
             <input ref={fileInputRef} type="file" accept=".csv,.txt" className="hidden" onChange={handleCsvImport} />
           </label>
-          <button onClick={openAdd} className="inline-flex items-center gap-2 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-[13px] font-medium rounded transition-colors cursor-pointer">
+          <button onClick={openAdd} className="inline-flex items-center gap-2 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-ds-13 font-medium rounded transition-colors cursor-pointer">
             <Plus className="w-3.5 h-3.5" />
             Dodaj
           </button>
@@ -327,67 +327,67 @@ export default function LocationsPage() {
 
       {locations.length > 0 && (
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#8b919e]" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ds-text-muted" />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Pretraži po SKU, zoni ili polici..."
-            className="w-full pl-9 pr-4 py-2.5 border border-[#e4e7eb] rounded bg-white text-[14px] text-[#111318] placeholder:text-[#8b919e] focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-colors"
+            className="w-full pl-9 pr-4 py-2.5 border border-ds-border rounded bg-white text-ds-14 text-ds-text-primary placeholder:text-ds-text-muted focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-colors"
           />
         </div>
       )}
 
       {loading ? (
-        <div className="bg-white border border-[#e4e7eb] rounded-lg p-10 text-center">
-          <p className="text-[13px] text-[#8b919e]">Učitavanje...</p>
+        <div className="bg-white border border-ds-border rounded-lg p-10 text-center">
+          <p className="text-ds-13 text-ds-text-muted">Učitavanje...</p>
         </div>
       ) : locations.length === 0 ? (
-        <div className="bg-white border border-[#e4e7eb] rounded-lg p-10 text-center">
+        <div className="bg-white border border-ds-border rounded-lg p-10 text-center">
           <div className="w-12 h-12 bg-indigo-50 rounded-lg flex items-center justify-center mx-auto mb-3">
             <MapPin className="w-6 h-6 text-indigo-500" />
           </div>
-          <p className="text-[14px] font-medium text-[#111318]">Nema lokacija</p>
-          <p className="text-[12px] text-[#8b919e] mt-1 mb-4">Dodajte lokacije ručno ili uvezite CSV datoteku.</p>
-          <button onClick={openAdd} className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-[13px] font-medium rounded transition-colors cursor-pointer">
+          <p className="text-ds-14 font-medium text-ds-text-primary">Nema lokacija</p>
+          <p className="text-ds-12 text-ds-text-muted mt-1 mb-4">Dodajte lokacije ručno ili uvezite CSV datoteku.</p>
+          <button onClick={openAdd} className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-ds-13 font-medium rounded transition-colors cursor-pointer">
             Dodaj prvu lokaciju
           </button>
         </div>
       ) : (
-        <div className="bg-white border border-[#e4e7eb] rounded-lg overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-3 border-b border-[#f0f2f4]">
-            <span className="text-[11px] font-medium text-[#8b919e] uppercase tracking-wide">Lokacije</span>
-            <span className="text-[12px] text-[#8b919e]">
+        <div className="bg-white border border-ds-border rounded-lg overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-3 border-b border-ds-border-subtle">
+            <span className="text-ds-11 font-medium text-ds-text-muted uppercase tracking-wide">Lokacije</span>
+            <span className="text-ds-12 text-ds-text-muted">
               {pageStart}-{pageEnd} / {filtered.length} (ukupno {locations.length})
             </span>
           </div>
           <table className="w-full">
             <thead>
-              <tr className="border-b border-[#f0f2f4]">
-                <th className="text-left px-5 py-3 text-[11px] font-medium text-[#8b919e] uppercase tracking-wide">SKU</th>
-                <th className="text-left px-5 py-3 text-[11px] font-medium text-[#8b919e] uppercase tracking-wide">Zona</th>
-                <th className="text-left px-5 py-3 text-[11px] font-medium text-[#8b919e] uppercase tracking-wide">Polica</th>
-                <th className="text-left px-5 py-3 text-[11px] font-medium text-[#8b919e] uppercase tracking-wide">Pozicija</th>
-                <th className="text-right px-5 py-3 text-[11px] font-medium text-[#8b919e] uppercase tracking-wide">Akcije</th>
+              <tr className="border-b border-ds-border-subtle">
+                <th className="text-left px-5 py-3 text-ds-11 font-medium text-ds-text-muted uppercase tracking-wide">SKU</th>
+                <th className="text-left px-5 py-3 text-ds-11 font-medium text-ds-text-muted uppercase tracking-wide">Zona</th>
+                <th className="text-left px-5 py-3 text-ds-11 font-medium text-ds-text-muted uppercase tracking-wide">Polica</th>
+                <th className="text-left px-5 py-3 text-ds-11 font-medium text-ds-text-muted uppercase tracking-wide">Pozicija</th>
+                <th className="text-right px-5 py-3 text-ds-11 font-medium text-ds-text-muted uppercase tracking-wide">Akcije</th>
               </tr>
             </thead>
             <tbody>
               {paginated.map((loc, idx) => (
-                <tr key={loc.id} className={cn("hover:bg-[#f7f8f9] transition-colors", idx !== paginated.length - 1 && "border-b border-[#f0f2f4]")}>
-                  <td className="px-5 py-3 font-mono text-[12px] font-medium text-[#111318]">{loc.sku}</td>
+                <tr key={loc.id} className={cn("hover:bg-ds-bg transition-colors", idx !== paginated.length - 1 && "border-b border-ds-border-subtle")}>
+                  <td className="px-5 py-3 font-mono text-ds-12 font-medium text-ds-text-primary">{loc.sku}</td>
                   <td className="px-5 py-3">
-                    <span className="px-2 py-0.5 text-[11px] font-medium rounded bg-indigo-50 text-indigo-700">{loc.zone_code}</span>
+                    <span className="px-1.5 py-0.5 text-xs font-medium rounded bg-indigo-50 text-indigo-700">{loc.zone_code}</span>
                   </td>
-                  <td className="px-5 py-3 text-[13px] text-[#111318]">{loc.shelf_code}</td>
+                  <td className="px-5 py-3 text-ds-13 text-ds-text-primary">{loc.shelf_code}</td>
                   <td className="px-5 py-3">
-                    <span className="text-[12px] font-mono text-[#555d6b]">{loc.route_position}</span>
+                    <span className="text-ds-12 font-mono text-ds-text-secondary">{loc.route_position}</span>
                   </td>
                   <td className="px-5 py-3 text-right">
                     <div className="flex items-center justify-end gap-1">
-                      <button onClick={() => openEdit(loc)} className="p-1.5 text-[#8b919e] hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors cursor-pointer" title="Uredi">
+                      <button onClick={() => openEdit(loc)} className="p-1.5 text-ds-text-muted hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors cursor-pointer" title="Uredi">
                         <Pencil className="w-3.5 h-3.5" />
                       </button>
-                      <button onClick={() => handleDelete(loc.id)} className="p-1.5 text-[#8b919e] hover:text-red-600 hover:bg-red-50 rounded transition-colors cursor-pointer" title="Obriši">
+                      <button onClick={() => handleDelete(loc.id)} className="p-1.5 text-ds-text-muted hover:text-red-600 hover:bg-red-50 rounded transition-colors cursor-pointer" title="Obriši">
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
@@ -396,15 +396,15 @@ export default function LocationsPage() {
               ))}
             </tbody>
           </table>
-          <div className="flex flex-col gap-3 px-5 py-3 border-t border-[#f0f2f4] sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-2 text-[12px] text-[#555d6b]">
+          <div className="flex flex-col gap-3 px-5 py-3 border-t border-ds-border-subtle sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-2 text-ds-12 text-ds-text-secondary">
               <span>Po stranici</span>
               <select
                 value={pageSize}
                 onChange={(e) =>
                   setPageSize(Number(e.target.value) as (typeof PAGE_SIZE_OPTIONS)[number])
                 }
-                className="border border-[#e4e7eb] rounded px-2 py-1 bg-white text-[12px] text-[#111318] focus:border-indigo-500 outline-none"
+                className="border border-ds-border rounded px-2 py-1 bg-white text-ds-12 text-ds-text-primary focus:border-indigo-500 outline-none"
               >
                 {PAGE_SIZE_OPTIONS.map((size) => (
                   <option key={size} value={size}>
@@ -417,17 +417,17 @@ export default function LocationsPage() {
               <button
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 disabled={pageSafe <= 1}
-                className="px-3 py-1.5 text-[12px] font-medium border border-[#e4e7eb] rounded hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                className="px-3 py-1.5 text-ds-12 font-medium border border-ds-border rounded hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
               >
                 Prethodna
               </button>
-              <span className="text-[12px] text-[#555d6b] min-w-[96px] text-center">
+              <span className="text-ds-12 text-ds-text-secondary min-w-[96px] text-center">
                 Stranica {pageSafe} / {totalPages}
               </span>
               <button
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                 disabled={pageSafe >= totalPages}
-                className="px-3 py-1.5 text-[12px] font-medium border border-[#e4e7eb] rounded hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                className="px-3 py-1.5 text-ds-12 font-medium border border-ds-border rounded hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
               >
                 Sljedeća
               </button>
@@ -438,42 +438,42 @@ export default function LocationsPage() {
 
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white border border-[#e4e7eb] rounded-lg w-full max-w-md">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-[#f0f2f4]">
-              <h3 className="text-[15px] font-semibold text-[#111318]">{editingId ? "Uredi lokaciju" : "Nova lokacija"}</h3>
-              <button onClick={() => setShowModal(false)} className="p-1.5 text-[#8b919e] hover:text-[#111318] rounded transition-colors cursor-pointer"><X className="w-4 h-4" /></button>
+          <div className="bg-white border border-ds-border rounded-lg w-full max-w-md">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-ds-border-subtle">
+              <h3 className="text-ds-15 font-semibold text-ds-text-primary">{editingId ? "Uredi lokaciju" : "Nova lokacija"}</h3>
+              <button onClick={() => setShowModal(false)} className="p-1.5 text-ds-text-muted hover:text-ds-text-primary rounded transition-colors cursor-pointer"><X className="w-4 h-4" /></button>
             </div>
             <div className="px-5 py-5 space-y-4">
               <div>
-                <label className="block text-[12px] font-medium text-[#111318] mb-1.5">SKU</label>
+                <label className="block text-ds-12 font-medium text-ds-text-primary mb-1.5">SKU</label>
                 <input type="text" value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })}
-                  className="w-full px-3 py-2.5 border border-[#e4e7eb] rounded bg-white text-[14px] text-[#111318] placeholder:text-[#8b919e] focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-colors disabled:bg-gray-50 disabled:text-[#8b919e]"
+                  className="w-full px-3 py-2.5 border border-ds-border rounded bg-white text-ds-14 text-ds-text-primary placeholder:text-ds-text-muted focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-colors disabled:bg-gray-50 disabled:text-ds-text-muted"
                   placeholder="npr. 978-953-123-456-7" disabled={!!editingId} />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[12px] font-medium text-[#111318] mb-1.5">Zona</label>
+                  <label className="block text-ds-12 font-medium text-ds-text-primary mb-1.5">Zona</label>
                   <input type="text" value={form.zone_code} onChange={(e) => setForm({ ...form, zone_code: e.target.value })}
-                    className="w-full px-3 py-2.5 border border-[#e4e7eb] rounded bg-white text-[14px] text-[#111318] placeholder:text-[#8b919e] focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-colors"
+                    className="w-full px-3 py-2.5 border border-ds-border rounded bg-white text-ds-14 text-ds-text-primary placeholder:text-ds-text-muted focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-colors"
                     placeholder="npr. A" />
                 </div>
                 <div>
-                  <label className="block text-[12px] font-medium text-[#111318] mb-1.5">Polica</label>
+                  <label className="block text-ds-12 font-medium text-ds-text-primary mb-1.5">Polica</label>
                   <input type="text" value={form.shelf_code} onChange={(e) => setForm({ ...form, shelf_code: e.target.value })}
-                    className="w-full px-3 py-2.5 border border-[#e4e7eb] rounded bg-white text-[14px] text-[#111318] placeholder:text-[#8b919e] focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-colors"
+                    className="w-full px-3 py-2.5 border border-ds-border rounded bg-white text-ds-14 text-ds-text-primary placeholder:text-ds-text-muted focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-colors"
                     placeholder="npr. A3-2" />
                 </div>
               </div>
               <div>
-                <label className="block text-[12px] font-medium text-[#111318] mb-1.5">Pozicija u ruti</label>
+                <label className="block text-ds-12 font-medium text-ds-text-primary mb-1.5">Pozicija u ruti</label>
                 <input type="number" value={form.route_position} onChange={(e) => setForm({ ...form, route_position: parseInt(e.target.value) || 0 })}
-                  className="w-full px-3 py-2.5 border border-[#e4e7eb] rounded bg-white text-[14px] text-[#111318] focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-colors" min={0} />
+                  className="w-full px-3 py-2.5 border border-ds-border rounded bg-white text-ds-14 text-ds-text-primary focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-colors" min={0} />
               </div>
             </div>
-            <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-[#f0f2f4]">
-              <button onClick={() => setShowModal(false)} className="px-4 py-2 text-[13px] font-medium text-[#555d6b] hover:text-[#111318] rounded hover:bg-gray-100 transition-colors cursor-pointer">Odustani</button>
+            <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-ds-border-subtle">
+              <button onClick={() => setShowModal(false)} className="px-4 py-2 text-ds-13 font-medium text-ds-text-secondary hover:text-ds-text-primary rounded hover:bg-gray-100 transition-colors cursor-pointer">Odustani</button>
               <button onClick={handleSave} disabled={saving || !form.sku || !form.zone_code || !form.shelf_code}
-                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-[13px] font-medium rounded disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer">
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-ds-13 font-medium rounded disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer">
                 {saving ? "Spremanje..." : editingId ? "Spremi" : "Dodaj"}
               </button>
             </div>
@@ -483,10 +483,10 @@ export default function LocationsPage() {
 
       {showCsvModal && csvResult && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white border border-[#e4e7eb] rounded-lg w-full max-w-md">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-[#f0f2f4]">
-              <h3 className="text-[15px] font-semibold text-[#111318]">Rezultat uvoza</h3>
-              <button onClick={() => setShowCsvModal(false)} className="p-1.5 text-[#8b919e] hover:text-[#111318] rounded transition-colors cursor-pointer"><X className="w-4 h-4" /></button>
+          <div className="bg-white border border-ds-border rounded-lg w-full max-w-md">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-ds-border-subtle">
+              <h3 className="text-ds-15 font-semibold text-ds-text-primary">Rezultat uvoza</h3>
+              <button onClick={() => setShowCsvModal(false)} className="p-1.5 text-ds-text-muted hover:text-ds-text-primary rounded transition-colors cursor-pointer"><X className="w-4 h-4" /></button>
             </div>
             <div className="px-5 py-5 space-y-4">
               <div className="flex items-center gap-3">
@@ -494,22 +494,22 @@ export default function LocationsPage() {
                   <CheckCircle2 className="w-5 h-5 text-emerald-600" />
                 </div>
                 <div>
-                  <p className="text-[13px] font-semibold text-[#111318]">{csvResult.created} novih, {csvResult.updated} ažuriranih</p>
-                  <p className="text-[12px] text-[#8b919e]">Ukupno: {csvResult.created + csvResult.updated} lokacija</p>
+                  <p className="text-ds-13 font-semibold text-ds-text-primary">{csvResult.created} novih, {csvResult.updated} ažuriranih</p>
+                  <p className="text-ds-12 text-ds-text-muted">Ukupno: {csvResult.created + csvResult.updated} lokacija</p>
                 </div>
               </div>
               {csvResult.errors.length > 0 && (
                 <div className="bg-red-50 border border-red-200 rounded p-3">
-                  <p className="text-[12px] font-semibold text-red-700 mb-1 flex items-center gap-1.5"><AlertCircle className="w-3.5 h-3.5" /> Greške ({csvResult.errors.length})</p>
-                  <ul className="text-[11px] text-red-600 space-y-1 overflow-y-auto max-h-32">
+                  <p className="text-ds-12 font-semibold text-red-700 mb-1 flex items-center gap-1.5"><AlertCircle className="w-3.5 h-3.5" /> Greške ({csvResult.errors.length})</p>
+                  <ul className="text-ds-11 text-red-600 space-y-1 overflow-y-auto max-h-32">
                     {csvResult.errors.slice(0, 10).map((err, i) => <li key={i} className="list-disc list-inside">{err}</li>)}
                     {csvResult.errors.length > 10 && <li className="font-medium">... i još {csvResult.errors.length - 10}</li>}
                   </ul>
                 </div>
               )}
             </div>
-            <div className="flex justify-end px-5 py-4 border-t border-[#f0f2f4]">
-              <button onClick={() => setShowCsvModal(false)} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-[13px] font-medium rounded transition-colors cursor-pointer">U redu</button>
+            <div className="flex justify-end px-5 py-4 border-t border-ds-border-subtle">
+              <button onClick={() => setShowCsvModal(false)} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-ds-13 font-medium rounded transition-colors cursor-pointer">U redu</button>
             </div>
           </div>
         </div>

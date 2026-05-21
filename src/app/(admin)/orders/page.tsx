@@ -64,58 +64,58 @@ export default function OrdersPage() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-[17px] font-semibold text-[#111318] tracking-tight">Narudžbe</h1>
-        <p className="text-[13px] text-[#555d6b] mt-0.5">Pregled narudžbi uvezenih iz WooCommerce.</p>
+        <h1 className="text-ds-17 font-semibold text-ds-text-primary tracking-tight">Narudžbe</h1>
+        <p className="text-ds-13 text-ds-text-secondary mt-0.5">Pregled narudžbi uvezenih iz WooCommerce.</p>
       </div>
 
       {loading ? (
-        <div className="bg-white border border-[#e4e7eb] rounded-lg p-10 text-center">
-          <p className="text-[13px] text-[#8b919e]">Učitavanje...</p>
+        <div className="bg-white border border-ds-border rounded-lg p-10 text-center">
+          <p className="text-ds-13 text-ds-text-muted">Učitavanje...</p>
         </div>
       ) : orders.length === 0 ? (
-        <div className="bg-white border border-[#e4e7eb] rounded-lg p-10 text-center">
+        <div className="bg-white border border-ds-border rounded-lg p-10 text-center">
           <div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center mx-auto mb-3">
             <ShoppingCart className="w-6 h-6 text-blue-500" />
           </div>
-          <p className="text-[14px] font-medium text-[#111318]">Nema narudžbi</p>
-          <p className="text-[12px] text-[#8b919e] mt-1 mb-4">Pokrenite WooCommerce sinkronizaciju za uvoz.</p>
-          <a href="/batches" className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-[13px] font-medium rounded transition-colors">
+          <p className="text-ds-14 font-medium text-ds-text-primary">Nema narudžbi</p>
+          <p className="text-ds-12 text-ds-text-muted mt-1 mb-4">Pokrenite WooCommerce sinkronizaciju za uvoz.</p>
+          <a href="/batches" className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-ds-13 font-medium rounded transition-colors">
             Idi na Batcheve
           </a>
         </div>
       ) : (
-        <div className="bg-white border border-[#e4e7eb] rounded-lg overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-3 border-b border-[#f0f2f4]">
-            <span className="text-[11px] font-medium text-[#8b919e] uppercase tracking-wide">Narudžbe</span>
-            <span className="text-[12px] text-[#8b919e]">
+        <div className="bg-white border border-ds-border rounded-lg overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-3 border-b border-ds-border-subtle">
+            <span className="text-ds-11 font-medium text-ds-text-muted uppercase tracking-wide">Narudžbe</span>
+            <span className="text-ds-12 text-ds-text-muted">
               {pageStart}-{pageEnd} / {totalCount}
             </span>
           </div>
           <table className="w-full">
             <thead>
-              <tr className="border-b border-[#f0f2f4]">
-                <th className="text-left px-5 py-3 text-[11px] font-medium text-[#8b919e] uppercase tracking-wide">WC #</th>
-                <th className="text-left px-5 py-3 text-[11px] font-medium text-[#8b919e] uppercase tracking-wide">Kupac</th>
-                <th className="text-left px-5 py-3 text-[11px] font-medium text-[#8b919e] uppercase tracking-wide">Status</th>
-                <th className="text-left px-5 py-3 text-[11px] font-medium text-[#8b919e] uppercase tracking-wide">Sinkronizirano</th>
+              <tr className="border-b border-ds-border-subtle">
+                <th className="text-left px-5 py-3 text-ds-11 font-medium text-ds-text-muted uppercase tracking-wide">WC #</th>
+                <th className="text-left px-5 py-3 text-ds-11 font-medium text-ds-text-muted uppercase tracking-wide">Kupac</th>
+                <th className="text-left px-5 py-3 text-ds-11 font-medium text-ds-text-muted uppercase tracking-wide">Status</th>
+                <th className="text-left px-5 py-3 text-ds-11 font-medium text-ds-text-muted uppercase tracking-wide">Sinkronizirano</th>
               </tr>
             </thead>
             <tbody>
               {orders.map((order, idx) => (
                 <tr key={order.id} className={cn(
-                  "hover:bg-[#f7f8f9] transition-colors",
-                  idx !== orders.length - 1 && "border-b border-[#f0f2f4]"
+                  "hover:bg-ds-bg transition-colors",
+                  idx !== orders.length - 1 && "border-b border-ds-border-subtle"
                 )}>
-                  <td className="px-5 py-3 font-mono text-[13px] font-medium text-[#111318]">#{order.woo_order_id}</td>
-                  <td className="px-5 py-3 text-[13px] text-[#111318]">{order.customer_name}</td>
+                  <td className="px-5 py-3 font-mono text-ds-13 font-medium text-ds-text-primary">#{order.woo_order_id}</td>
+                  <td className="px-5 py-3 text-ds-13 text-ds-text-primary">{order.customer_name}</td>
                   <td className="px-5 py-3">
-                    <span className={cn("px-2 py-0.5 text-[11px] font-medium rounded",
+                    <span className={cn("px-1.5 py-0.5 text-xs font-medium rounded",
                       statusConfig[order.status]?.badge || "bg-gray-100 text-gray-600"
                     )}>
                       {statusConfig[order.status]?.label || order.status}
                     </span>
                   </td>
-                  <td className="px-5 py-3 text-[12px] text-[#8b919e]">
+                  <td className="px-5 py-3 text-ds-12 text-ds-text-muted">
                     {new Date(order.synced_at).toLocaleDateString("hr-HR", {
                       day: "2-digit", month: "2-digit", year: "numeric",
                       hour: "2-digit", minute: "2-digit",
@@ -125,8 +125,8 @@ export default function OrdersPage() {
               ))}
             </tbody>
           </table>
-          <div className="flex flex-col gap-3 px-5 py-3 border-t border-[#f0f2f4] sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-2 text-[12px] text-[#555d6b]">
+          <div className="flex flex-col gap-3 px-5 py-3 border-t border-ds-border-subtle sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-2 text-ds-12 text-ds-text-secondary">
               <span>Po stranici</span>
               <select
                 value={pageSize}
@@ -134,7 +134,7 @@ export default function OrdersPage() {
                   setPageSize(Number(e.target.value) as (typeof PAGE_SIZE_OPTIONS)[number]);
                   setPage(1);
                 }}
-                className="border border-[#e4e7eb] rounded px-2 py-1 bg-white text-[12px] text-[#111318] focus:border-indigo-500 outline-none"
+                className="border border-ds-border rounded px-2 py-1 bg-white text-ds-12 text-ds-text-primary focus:border-indigo-500 outline-none"
               >
                 {PAGE_SIZE_OPTIONS.map((size) => (
                   <option key={size} value={size}>
@@ -147,17 +147,17 @@ export default function OrdersPage() {
               <button
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 disabled={pageSafe <= 1}
-                className="px-3 py-1.5 text-[12px] font-medium border border-[#e4e7eb] rounded hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                className="px-3 py-1.5 text-ds-12 font-medium border border-ds-border rounded hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
               >
                 Prethodna
               </button>
-              <span className="text-[12px] text-[#555d6b] min-w-[96px] text-center">
+              <span className="text-ds-12 text-ds-text-secondary min-w-[96px] text-center">
                 Stranica {pageSafe} / {totalPages}
               </span>
               <button
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                 disabled={pageSafe >= totalPages}
-                className="px-3 py-1.5 text-[12px] font-medium border border-[#e4e7eb] rounded hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                className="px-3 py-1.5 text-ds-12 font-medium border border-ds-border rounded hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
               >
                 Sljedeća
               </button>
