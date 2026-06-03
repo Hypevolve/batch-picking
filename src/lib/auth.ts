@@ -3,6 +3,7 @@ import Credentials from "next-auth/providers/credentials";
 import { supabaseAdmin } from "@/server/db/supabase-admin";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
+  trustHost: true,
   providers: [
     Credentials({
       name: "Credentials",
