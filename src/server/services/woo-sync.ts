@@ -2,6 +2,7 @@ import { supabaseAdmin } from "@/server/db/supabase-admin";
 import {
   fetchProcessingOrders,
   fetchProductBySku,
+  extractAuthor,
   type WooOrder,
 } from "@/lib/woocommerce";
 
@@ -109,16 +110,21 @@ export async function importSingleWooOrder(wooOrder: WooOrder): Promise<{
     for (const item of wooOrder.line_items) {
       if (!item.sku) continue; // Skip items without SKU
 
+      // Ensure product exists in cache (and fetch its author) before inserting
+      const author = await ensureProductCached(
+        item.sku,
+        item.name,
+        item.image?.src
+      );
+
       await supabaseAdmin.from("order_items").insert({
         order_id: newOrder.id,
         sku: item.sku,
         quantity: item.quantity,
         product_title_snapshot: item.name,
         product_image_snapshot: item.image?.src || null,
+        product_author_snapshot: author,
       });
-
-      // Ensure product exists in cache
-      await ensureProductCached(item.sku, item.name, item.image?.src);
     }
 
     return { status: "synced" };
@@ -131,20 +137,40 @@ export async function importSingleWooOrder(wooOrder: WooOrder): Promise<{
 }
 
 /**
- * Ensure a product exists in local cache, fetching from Woo if needed
+ * Ensure a product exists in local cache, fetching from Woo if needed.
+ * Returns the resolved author (from the `import_autori` meta key) if available.
+ * Backfills the author on existing products that are missing it.
  */
 async function ensureProductCached(
   sku: string,
   fallbackTitle: string,
   fallbackImage?: string | null
-): Promise<void> {
+): Promise<string | null> {
   const { data: existing } = await supabaseAdmin
     .from("products")
-    .select("id")
+    .select("id, author")
     .eq("sku", sku)
     .limit(1);
 
-  if (existing && existing.length > 0) return;
+  if (existing && existing.length > 0) {
+    const cached = existing[0] as { id: number; author: string | null };
+    if (cached.author) return cached.author;
+
+    // Product is cached but missing author — try to backfill it.
+    try {
+      const wooProduct = await fetchProductBySku(sku);
+      const author = wooProduct ? extractAuthor(wooProduct) : null;
+      if (author) {
+        await supabaseAdmin
+          .from("products")
+          .update({ author, updated_at: new Date().toISOString() })
+          .eq("id", cached.id);
+      }
+      return author;
+    } catch {
+      return null;
+    }
+  }
 
   // Try to fetch full product data from WooCommerce
   let title = fallbackTitle;
@@ -159,17 +185,7 @@ async function ensureProductCached(
       wooProductId = wooProduct.id;
       imageUrl =
         wooProduct.images.length > 0 ? wooProduct.images[0].src : imageUrl;
-
-      // Try to extract author from meta data
-      const authorMeta = wooProduct.meta_data.find(
-        (m) =>
-          m.key === "author" ||
-          m.key === "_author" ||
-          m.key === "book_author"
-      );
-      if (authorMeta) {
-        author = authorMeta.value;
-      }
+      author = extractAuthor(wooProduct);
     }
   } catch {
     // Use fallback data if Woo fetch fails
@@ -182,4 +198,6 @@ async function ensureProductCached(
     author,
     woo_product_id: wooProductId,
   });
+
+  return author;
 }

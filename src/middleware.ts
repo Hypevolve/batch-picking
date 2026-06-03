@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
 
-const PUBLIC_PATHS = ["/login", "/api/auth", "/api/webhooks"];
+const PUBLIC_PATHS = ["/login", "/api/auth", "/api/webhooks", "/api/health"];
 const ADMIN_PATHS = ["/dashboard", "/batches", "/orders", "/locations", "/users"];
 
 export default auth((req) => {

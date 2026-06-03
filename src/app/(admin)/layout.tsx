@@ -1,5 +1,6 @@
 import { AdminSidebar } from "@/components/shared/admin-sidebar";
 import { AdminHeader } from "@/components/shared/admin-header";
+import AIAssistant from "@/components/shared/ai-assistant";
 import { auth } from "@/lib/auth";
 
 export default async function AdminLayout({
@@ -23,6 +24,8 @@ export default async function AdminLayout({
           </div>
         </main>
       </div>
+
+      <AIAssistant />
     </div>
   );
 }

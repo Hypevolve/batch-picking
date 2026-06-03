@@ -114,6 +114,7 @@ export const orderItems = pgTable("order_items", {
   quantity: integer("quantity").notNull().default(1),
   productTitleSnapshot: text("product_title_snapshot"),
   productImageSnapshot: text("product_image_snapshot"),
+  productAuthorSnapshot: text("product_author_snapshot"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -154,6 +155,7 @@ export const batchItems = pgTable("batch_items", {
   sku: varchar("sku", { length: 100 }).notNull(),
   productTitle: text("product_title"),
   productImageUrl: text("product_image_url"),
+  author: text("author"),
   totalQuantity: integer("total_quantity").notNull().default(0),
   basketBreakdown: jsonb("basket_breakdown").$type<Record<string, number>>(),
   routePosition: integer("route_position").notNull().default(0),

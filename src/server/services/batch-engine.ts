@@ -284,6 +284,7 @@ export async function generateBatches(): Promise<{
           sku,
           product_title: product?.title || null,
           product_image_url: product?.image_url || null,
+          author: product?.author || null,
           total_quantity: data.totalQty,
           basket_breakdown: data.breakdown,
           route_position: location?.route_position || 9999,

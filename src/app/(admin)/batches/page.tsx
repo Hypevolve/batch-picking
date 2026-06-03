@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/utils/supabase/client";
-import { Layers, Plus, ChevronRight, RefreshCw, CheckCircle2, AlertCircle, Clock3, Play, Package } from "lucide-react";
+import { Layers, Plus, ChevronRight, RefreshCw, CheckCircle2, AlertCircle, Clock3, Play, Package, Trash2 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
@@ -54,6 +54,7 @@ export default function BatchesPage() {
   const [pageSize, setPageSize] =
     useState<(typeof PAGE_SIZE_OPTIONS)[number]>(25);
   const [syncing, setSyncing] = useState(false);
+  const [resetting, setResetting] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [toast, setToast] = useState<{
     message: string;
@@ -105,10 +106,10 @@ export default function BatchesPage() {
   async function syncOrders() {
     setSyncing(true);
     try {
-      const res = await fetch("/api/trpc/orders.sync", { 
-        method: "POST", 
-        headers: { "Content-Type": "application/json" }, 
-        body: JSON.stringify({}) 
+      const res = await fetch("/api/trpc/orders.sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
       });
       const result = await res.json();
       const data = result?.result?.data;
@@ -121,6 +122,31 @@ export default function BatchesPage() {
       showToast("Sinkronizacija neuspješna. Provjerite WooCommerce postavke.", "error");
     }
     setSyncing(false);
+  }
+
+  async function resetAndSyncOrders() {
+    if (!confirm("Ovo će obrisati SVE batcheve, narudžbe i stavke iz baze, te pokrenuti novu sinkronizaciju iz WooCommercea. Jeste li sigurni?")) {
+      return;
+    }
+    setResetting(true);
+    try {
+      const res = await fetch("/api/trpc/orders.resetAndSync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const result = await res.json();
+      const data = result?.result?.data;
+      if (data?.cleanupErrors && data.cleanupErrors.length > 0) {
+        showToast(`Cleanup imao grešaka, ali sync pokrenut. Uvezeno ${data?.synced || 0} narudžbi.`, "error");
+      } else {
+        showToast(`Baza očišćena i sinkronizirana! Uvezeno ${data?.synced || 0} narudžbi.`, "success");
+      }
+      loadBatches();
+    } catch (err) {
+      showToast("Reset i sinkronizacija neuspješni.", "error");
+    }
+    setResetting(false);
   }
 
   async function generateBatches() {
@@ -163,11 +189,19 @@ export default function BatchesPage() {
         <div className="flex items-center gap-2">
           <button
             onClick={syncOrders}
-            disabled={syncing}
+            disabled={syncing || resetting}
             className="inline-flex items-center gap-2 px-3.5 py-2 bg-white border border-ds-border text-ds-text-primary text-ds-13 font-medium rounded hover:bg-gray-50 disabled:opacity-50 transition-colors cursor-pointer"
           >
             <RefreshCw className={cn("w-3.5 h-3.5 text-ds-text-muted", syncing && "animate-spin")} />
             {syncing ? "Sync..." : "Sync"}
+          </button>
+          <button
+            onClick={resetAndSyncOrders}
+            disabled={syncing || resetting}
+            className="inline-flex items-center gap-2 px-3.5 py-2 bg-white border border-red-200 text-red-700 text-ds-13 font-medium rounded hover:bg-red-50 disabled:opacity-50 transition-colors cursor-pointer"
+          >
+            <Trash2 className={cn("w-3.5 h-3.5", resetting && "animate-spin")} />
+            {resetting ? "Čišćenje..." : "Reset & Sync"}
           </button>
           <button
             onClick={generateBatches}

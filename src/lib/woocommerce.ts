@@ -2,6 +2,15 @@ const WOO_API_URL = process.env.WOO_API_URL?.replace(/\/$/, "") || "";
 const WOO_CONSUMER_KEY = process.env.WOO_CONSUMER_KEY || "";
 const WOO_CONSUMER_SECRET = process.env.WOO_CONSUMER_SECRET || "";
 
+// How many days back to sync orders from (configurable). Default: 7 days.
+const SYNC_DAYS_BACK = (() => {
+  const parsed = Number(process.env.SYNC_DAYS_BACK);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 7;
+})();
+
+// Product meta keys that may hold the book author, in priority order.
+const AUTHOR_META_KEYS = ["import_autori", "author", "_author", "book_author"];
+
 interface WooOrderItem {
   id: number;
   name: string;
@@ -65,11 +74,27 @@ export async function fetchProcessingOrders(
   page = 1,
   perPage = 100
 ): Promise<WooOrder[]> {
+  const afterDate = new Date(Date.now() - SYNC_DAYS_BACK * 24 * 60 * 60 * 1000);
   return wooFetch<WooOrder[]>("/orders", {
     status: "processing",
+    after: afterDate.toISOString(),
     page: String(page),
     per_page: String(perPage),
   });
+}
+
+/**
+ * Extract the book author from a WooCommerce product's meta_data.
+ * The Libar store stores authors in the `import_autori` meta key.
+ */
+export function extractAuthor(product: WooProduct): string | null {
+  for (const key of AUTHOR_META_KEYS) {
+    const meta = product.meta_data.find((m) => m.key === key);
+    if (meta && typeof meta.value === "string" && meta.value.trim()) {
+      return meta.value.trim();
+    }
+  }
+  return null;
 }
 
 export async function fetchProductBySku(sku: string): Promise<WooProduct | null> {

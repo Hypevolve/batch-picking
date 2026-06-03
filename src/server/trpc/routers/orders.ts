@@ -51,4 +51,51 @@ export const ordersRouter = router({
   sync: adminProcedure.mutation(async () => {
     return syncOrders();
   }),
+
+  resetAndSync: adminProcedure.mutation(async () => {
+    const cleanupErrors: string[] = [];
+
+    try {
+      const { error } = await supabaseAdmin.from("batch_items").delete().neq("id", 0);
+      if (error) cleanupErrors.push(`batch_items: ${error.message}`);
+    } catch (e) {
+      cleanupErrors.push(String(e));
+    }
+
+    try {
+      const { error } = await supabaseAdmin.from("batch_orders").delete().neq("id", 0);
+      if (error) cleanupErrors.push(`batch_orders: ${error.message}`);
+    } catch (e) {
+      cleanupErrors.push(String(e));
+    }
+
+    try {
+      const { error } = await supabaseAdmin.from("batches").delete().neq("id", 0);
+      if (error) cleanupErrors.push(`batches: ${error.message}`);
+    } catch (e) {
+      cleanupErrors.push(String(e));
+    }
+
+    try {
+      const { error } = await supabaseAdmin.from("order_items").delete().neq("id", 0);
+      if (error) cleanupErrors.push(`order_items: ${error.message}`);
+    } catch (e) {
+      cleanupErrors.push(String(e));
+    }
+
+    try {
+      const { error } = await supabaseAdmin.from("orders").delete().neq("id", 0);
+      if (error) cleanupErrors.push(`orders: ${error.message}`);
+    } catch (e) {
+      cleanupErrors.push(String(e));
+    }
+
+    const syncResult = await syncOrders();
+
+    return {
+      cleaned: cleanupErrors.length === 0,
+      cleanupErrors,
+      ...syncResult,
+    };
+  }),
 });

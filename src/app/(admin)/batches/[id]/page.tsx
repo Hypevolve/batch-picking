@@ -41,6 +41,7 @@ interface BatchItem {
   id: number;
   sku: string;
   product_title: string | null;
+  author: string | null;
   total_quantity: number;
   basket_breakdown: Record<string, number> | null;
   zone_code: string | null;
@@ -322,6 +323,9 @@ export default function BatchDetailPage() {
                   )}>
                     {item.product_title || item.sku}
                   </p>
+                  {item.author && (
+                    <p className="text-ds-11 text-ds-text-secondary mt-0.5">{item.author}</p>
+                  )}
                   <div className="flex flex-wrap items-center gap-2 mt-0.5">
                     <span className="text-ds-11 text-ds-text-muted">{item.sku}</span>
                     {item.zone_code && (

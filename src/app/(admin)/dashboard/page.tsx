@@ -11,6 +11,7 @@ import {
   AlertCircle,
   Clock,
   User,
+  Trash2,
 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -99,6 +100,7 @@ export default function AdminDashboardPage() {
   const [stats, setStats] = useState<DashStats>({ orders: 0, batches: 0, picked: 0, packed: 0 });
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  const [resetting, setResetting] = useState(false);
   const [syncResult, setSyncResult] = useState<{ success: boolean; message: string } | null>(null);
   const [activities, setActivities] = useState<ActivityLogItem[]>([]);
 
@@ -131,7 +133,7 @@ export default function AdminDashboardPage() {
   }, []);
 
   const handleSync = async () => {
-    if (syncing) return;
+    if (syncing || resetting) return;
     setSyncing(true);
     setSyncResult(null);
     try {
@@ -144,6 +146,25 @@ export default function AdminDashboardPage() {
       setSyncResult({ success: false, message: "Sinkronizacija neuspješna." });
     } finally {
       setSyncing(false);
+      setTimeout(() => setSyncResult(null), 4000);
+    }
+  };
+
+  const handleResetAndSync = async () => {
+    if (syncing || resetting) return;
+    if (!confirm("Ovo će obrisati SVE batcheve, narudžbe i stavke iz baze, te pokrenuti novu sinkronizaciju iz WooCommercea. Jeste li sigurni?")) return;
+    setResetting(true);
+    setSyncResult(null);
+    try {
+      const res = await fetch("/api/trpc/orders.resetAndSync", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
+      const result = await res.json();
+      const data = result?.result?.data;
+      setSyncResult({ success: true, message: `Baza očišćena. Uvezeno ${data?.synced || 0} narudžbi.` });
+      await Promise.all([loadStats(), loadActivities()]);
+    } catch {
+      setSyncResult({ success: false, message: "Reset i sinkronizacija neuspješni." });
+    } finally {
+      setResetting(false);
       setTimeout(() => setSyncResult(null), 4000);
     }
   };
@@ -194,14 +215,24 @@ export default function AdminDashboardPage() {
                   </div>
                 )}
               </div>
-              <button
-                onClick={handleSync}
-                disabled={syncing}
-                className="shrink-0 inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-ds-13 font-medium transition-colors disabled:opacity-50 cursor-pointer"
-              >
-                <RefreshCw className={cn("w-3.5 h-3.5", syncing && "animate-spin")} />
-                {syncing ? "Sync..." : "Sinkroniziraj"}
-              </button>
+              <div className="shrink-0 flex items-center gap-2">
+                <button
+                  onClick={handleSync}
+                  disabled={syncing || resetting}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-ds-13 font-medium transition-colors disabled:opacity-50 cursor-pointer"
+                >
+                  <RefreshCw className={cn("w-3.5 h-3.5", syncing && "animate-spin")} />
+                  {syncing ? "Sync..." : "Sinkroniziraj"}
+                </button>
+                <button
+                  onClick={handleResetAndSync}
+                  disabled={syncing || resetting}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-red-200 text-red-700 rounded text-ds-13 font-medium transition-colors disabled:opacity-50 cursor-pointer hover:bg-red-50"
+                >
+                  <Trash2 className={cn("w-3.5 h-3.5", resetting && "animate-spin")} />
+                  {resetting ? "Čišćenje..." : "Reset & Sync"}
+                </button>
+              </div>
             </div>
           </div>
 

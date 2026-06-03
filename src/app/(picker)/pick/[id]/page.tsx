@@ -30,6 +30,7 @@ interface PickItem {
   sku: string;
   product_title: string | null;
   product_image_url: string | null;
+  author: string | null;
   total_quantity: number;
   basket_breakdown: Record<string, number> | null;
   zone_code: string | null;
@@ -257,6 +258,14 @@ export default function PickingPage() {
                     )}>
                       {item.product_title || item.sku}
                     </p>
+                    {item.author && (
+                      <p className={cn(
+                        "text-ds-12 leading-snug mt-0.5",
+                        item.is_picked ? "text-ds-text-muted" : "text-ds-text-secondary"
+                      )}>
+                        {item.author}
+                      </p>
+                    )}
                     <div className="flex flex-wrap items-center gap-2 mt-1">
                       <span className="text-ds-11 font-mono text-ds-text-muted">{item.sku}</span>
                       {item.shelf_code && (

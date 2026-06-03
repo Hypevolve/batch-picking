@@ -75,6 +75,7 @@ CREATE TABLE order_items (
   quantity INTEGER NOT NULL DEFAULT 1,
   product_title_snapshot TEXT,
   product_image_snapshot TEXT,
+  product_author_snapshot TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -112,6 +113,7 @@ CREATE TABLE batch_items (
   sku VARCHAR(100) NOT NULL,
   product_title TEXT,
   product_image_url TEXT,
+  author TEXT,
   total_quantity INTEGER NOT NULL DEFAULT 0,
   basket_breakdown JSONB,
   route_position INTEGER NOT NULL DEFAULT 0,

@@ -1,0 +1,34 @@
+# Render Blueprint — Batch Picking (Libar)
+# https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: batch-picking
+    runtime: node
+    plan: starter        # ⚠️ Obavezno Starter ili više!
+    region: frankfurt  # Najbliži server Hrvatskoj
+    branch: main
+    buildCommand: npm install && npm run build
+    startCommand: npm run start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NEXTAUTH_URL
+        value: https://batch-picking.onrender.com
+      - key: NEXTAUTH_SECRET
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false
+      - key: WOO_API_URL
+        sync: false
+      - key: WOO_CONSUMER_KEY
+        sync: false
+      - key: WOO_CONSUMER_SECRET
+        sync: false
+      - key: SYNC_DAYS_BACK
+        value: "7"
+      - key: NEXT_PUBLIC_SUPABASE_URL
+        sync: false
+      - key: NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+        sync: false
