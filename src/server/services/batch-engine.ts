@@ -388,6 +388,18 @@ export async function generateBatches(): Promise<{
     })
   );
 
+  // Preload all products for SKUs in these orders (eliminates N+1 queries)
+  const allSkus = [...new Set(items.map((i: { sku: string }) => i.sku))];
+  const { data: allProducts } = await supabaseAdmin
+    .from("products")
+    .select("sku, title, image_url, author")
+    .in("sku", allSkus);
+
+  const productMap = new Map<string, { title: string | null; image_url: string | null; author: string | null }>();
+  for (const p of allProducts || []) {
+    productMap.set(p.sku, { title: p.title, image_url: p.image_url, author: p.author });
+  }
+
   // Split into zone-eligible orders (≥1 SKU has a location) and fallback orders
   const zoneLocationMap = new Map<string, string>();
   for (const [sku, loc] of locationMap) {
@@ -483,13 +495,7 @@ export async function generateBatches(): Promise<{
       // Create batch_items with computed route positions (zone_sort_order * 1000 + shelf_num)
       for (const [sku, data] of skuMap) {
         const loc = locationMap.get(sku) ?? null;
-
-        const { data: product } = await supabaseAdmin
-          .from("products")
-          .select("title, image_url, author")
-          .eq("sku", sku)
-          .limit(1)
-          .single();
+        const product = productMap.get(sku) ?? null;
 
         const routePos = computeRoutePosition(
           loc?.zone_code ?? null,
