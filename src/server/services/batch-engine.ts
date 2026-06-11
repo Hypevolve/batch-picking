@@ -4,6 +4,7 @@ import { generateBatchCode } from "@/lib/utils";
 const BATCH_SIZE = 5;
 const SMART_THRESHOLD = 0.1; // 10% overlap for "smart" classification
 const ZONE_JACCARD_THRESHOLD = 0.3; // 30% zone overlap required for seeding (v3)
+const MAX_ZONE_SPAN = 2; // max adjacent zones allowed in one batch (2 = e.g. A+B ok, A+C not ok)
 const EXCLUDED_SKUS = new Set(["9075"]); // delivery cost SKU — not a physical item
 
 interface OrderWithItems {
@@ -158,6 +159,26 @@ export function classifyBatchType(
 // ─── Zone Jaccard (v3) ───────────────────────────────────────────────────────
 
 /**
+ * Check whether all zones in the set fit within MAX_ZONE_SPAN consecutive sort_order values.
+ * E.g. with MAX_ZONE_SPAN=2: {ZONA-A(1), ZONA-B(2)} → span 1 → ok; {ZONA-A(1), ZONA-C(3)} → span 2 → too far.
+ */
+export function zonesAreAdjacent(
+  zones: Set<string>,
+  zoneSortMap: Map<string, number>,
+  maxSpan: number = MAX_ZONE_SPAN
+): boolean {
+  const sortOrders: number[] = [];
+  for (const z of zones) {
+    const so = zoneSortMap.get(z);
+    if (so !== undefined) sortOrders.push(so);
+  }
+  if (sortOrders.length <= 1) return true;
+  const min = Math.min(...sortOrders);
+  const max = Math.max(...sortOrders);
+  return max - min < maxSpan;
+}
+
+/**
  * Attach a zone profile (Set of zone_codes) to each order.
  * SKU 9075 (delivery cost) is excluded. Orders with no mapped SKUs get an empty set.
  */
@@ -196,6 +217,7 @@ export function calculateZoneJaccard(
  */
 export function zoneBasedGroupOrders(
   ordersWithZones: OrderWithZones[],
+  zoneSortMap: Map<string, number>,
   batchSize: number = BATCH_SIZE
 ): OrderWithItems[][] {
   const groups: OrderWithItems[][] = [];
@@ -215,6 +237,10 @@ export function zoneBasedGroupOrders(
         ordersWithZones[j].zones
       );
       if (sim >= ZONE_JACCARD_THRESHOLD) {
+        // Adjacency check: combined zones must fit within MAX_ZONE_SPAN consecutive zones
+        const combinedZones = new Set([...ordersWithZones[i].zones, ...ordersWithZones[j].zones]);
+        if (!zonesAreAdjacent(combinedZones, zoneSortMap)) continue;
+
         const interSize = [...ordersWithZones[i].zones].filter((z) =>
           ordersWithZones[j].zones.has(z)
         ).length;
@@ -278,6 +304,11 @@ export function zoneBasedGroupOrders(
         // Require sharing with ≥2 members once batch has ≥2 members
         const required = currentGroup.length >= 2 ? 2 : 1;
         if (membersSharing < required) continue;
+
+        // Adjacency check: batch zones + candidate zones must stay within MAX_ZONE_SPAN
+        const batchZones = new Set(currentGroup.flatMap((m) => [...m.zones]));
+        for (const z of order.zones) batchZones.add(z);
+        if (!zonesAreAdjacent(batchZones, zoneSortMap)) continue;
 
         // Among valid candidates, prefer the one with most shared zone coverage
         const sharedZones = new Set(
@@ -414,7 +445,7 @@ export async function generateBatches(): Promise<{
 
   // Group: zone algorithm for located orders, SKU Jaccard for the rest
   const groups: OrderWithItems[][] = [
-    ...zoneBasedGroupOrders(zoneOrders),
+    ...zoneBasedGroupOrders(zoneOrders, zoneSortMap),
     ...greedyGroupOrders(fallbackOrders),
   ];
 

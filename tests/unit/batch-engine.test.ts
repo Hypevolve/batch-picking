@@ -170,6 +170,14 @@ describe("calculateZoneJaccard", () => {
 });
 
 describe("zoneBasedGroupOrders", () => {
+  const zoneSortMap = new Map([
+    ["ZONA-A", 1],
+    ["ZONA-B", 2],
+    ["ZONA-C", 3],
+    ["ZONA-D", 4],
+    ["ZONA-E", 5],
+  ]);
+
   it("batches orders sharing a zone (document example: zone C + zone D → same batch)", () => {
     const locationMap = new Map([
       ["FON2", "ZONA-C"],
@@ -191,7 +199,8 @@ describe("zoneBasedGroupOrders", () => {
         zones: new Set(
           o.skus.map((s) => locationMap.get(s)!)
         ),
-      }))
+      })),
+      zoneSortMap
     );
     // Disjoint zones → 2 solo batches
     expect(result).toHaveLength(2);
@@ -204,7 +213,7 @@ describe("zoneBasedGroupOrders", () => {
       { orderId: 2, skus: ["C", "D"], zones: new Set(["ZONA-B"]) },
       { orderId: 3, skus: ["E", "F"], zones: new Set(["ZONA-E"]) },
     ];
-    const result = zoneBasedGroupOrders(orders);
+    const result = zoneBasedGroupOrders(orders, zoneSortMap);
     // Orders 1+2 share ZONA-B (jaccard=1.0 ≥ 0.3), order 3 goes solo
     expect(result).toHaveLength(2);
     const batchedIds = result.find((g) => g.length === 2)?.map((o) => o.orderId);
@@ -218,7 +227,7 @@ describe("zoneBasedGroupOrders", () => {
       { orderId: 2, skus: ["B"], zones: new Set(["ZONA-C"]) },
       { orderId: 3, skus: ["C"], zones: new Set(["ZONA-D"]) },
     ];
-    const result = zoneBasedGroupOrders(orders);
+    const result = zoneBasedGroupOrders(orders, zoneSortMap);
     expect(result).toHaveLength(3);
     expect(result.every((g) => g.length === 1)).toBe(true);
   });
@@ -229,7 +238,7 @@ describe("zoneBasedGroupOrders", () => {
       skus: [`SKU-${i}`],
       zones: new Set(["ZONA-B"]),
     }));
-    const result = zoneBasedGroupOrders(orders, 5);
+    const result = zoneBasedGroupOrders(orders, zoneSortMap, 5);
     expect(result.every((g) => g.length <= 5)).toBe(true);
   });
 });
