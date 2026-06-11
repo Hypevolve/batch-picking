@@ -178,7 +178,7 @@ describe("zoneBasedGroupOrders", () => {
     ["ZONA-E", 5],
   ]);
 
-  it("batches orders sharing a zone (document example: zone C + zone D → same batch)", () => {
+  it("batches orders from adjacent zones (C + D → same batch)", () => {
     const locationMap = new Map([
       ["FON2", "ZONA-C"],
       ["KEM2", "ZONA-C"],
@@ -191,8 +191,6 @@ describe("zoneBasedGroupOrders", () => {
       { orderId: 1, skus: ["FON2", "KEM2", "MAT2"] },
       { orderId: 2, skus: ["FON3", "KEM3", "MAT3"] },
     ];
-    // zone_jaccard({C}, {D}) = 0 → disjoint, go solo per spec
-    // (document says adjacent zones batch, but algorithm requires shared zone)
     const result = zoneBasedGroupOrders(
       orders.map((o) => ({
         ...o,
@@ -202,9 +200,9 @@ describe("zoneBasedGroupOrders", () => {
       })),
       zoneSortMap
     );
-    // Disjoint zones → 2 solo batches
-    expect(result).toHaveLength(2);
-    expect(result.every((g) => g.length === 1)).toBe(true);
+    // C(3) + D(4) are adjacent (span=1 < 2) → grouped together
+    expect(result).toHaveLength(1);
+    expect(result[0]).toHaveLength(2);
   });
 
   it("batches two orders sharing the same zone", () => {
@@ -221,13 +219,14 @@ describe("zoneBasedGroupOrders", () => {
     expect(batchedIds).toContain(2);
   });
 
-  it("sends orders with no zone partner solo", () => {
+  it("sends orders in non-adjacent zones solo", () => {
     const orders = [
-      { orderId: 1, skus: ["A"], zones: new Set(["ZONA-B"]) },
+      { orderId: 1, skus: ["A"], zones: new Set(["ZONA-A"]) },
       { orderId: 2, skus: ["B"], zones: new Set(["ZONA-C"]) },
-      { orderId: 3, skus: ["C"], zones: new Set(["ZONA-D"]) },
+      { orderId: 3, skus: ["C"], zones: new Set(["ZONA-E"]) },
     ];
     const result = zoneBasedGroupOrders(orders, zoneSortMap);
+    // A(1), C(3), E(5) — no pair is adjacent (all spans ≥ 2)
     expect(result).toHaveLength(3);
     expect(result.every((g) => g.length === 1)).toBe(true);
   });

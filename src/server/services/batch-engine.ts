@@ -3,7 +3,6 @@ import { generateBatchCode } from "@/lib/utils";
 
 const BATCH_SIZE = 5;
 const SMART_THRESHOLD = 0.1; // 10% overlap for "smart" classification
-const ZONE_JACCARD_THRESHOLD = 0.3; // 30% zone overlap required for seeding (v3)
 const MAX_ZONE_SPAN = 2; // max adjacent zones allowed in one batch (2 = e.g. A+B ok, A+C not ok)
 const EXCLUDED_SKUS = new Set(["9075"]); // delivery cost SKU — not a physical item
 
@@ -211,9 +210,9 @@ export function calculateZoneJaccard(
 
 /**
  * Zone-based greedy grouping (v3 algorithm):
- *   1. Seed  — best pair with zone_jaccard ≥ 30%
- *   2. Grow  — add candidate sharing ≥1 zone with ≥2 existing members
- *   3. Solo  — orders with no qualifying partner go as individual batches
+ *   1. Seed  — best pair whose combined zones are adjacent (within MAX_ZONE_SPAN)
+ *   2. Grow  — add candidate keeping all batch zones within MAX_ZONE_SPAN
+ *   3. Solo  — orders with no adjacent partner go as individual batches
  */
 export function zoneBasedGroupOrders(
   ordersWithZones: OrderWithZones[],
@@ -232,24 +231,21 @@ export function zoneBasedGroupOrders(
 
   for (let i = 0; i < ordersWithZones.length; i++) {
     for (let j = i + 1; j < ordersWithZones.length; j++) {
+      const combinedZones = new Set([...ordersWithZones[i].zones, ...ordersWithZones[j].zones]);
+      if (!zonesAreAdjacent(combinedZones, zoneSortMap)) continue;
+
       const sim = calculateZoneJaccard(
         ordersWithZones[i].zones,
         ordersWithZones[j].zones
       );
-      if (sim >= ZONE_JACCARD_THRESHOLD) {
-        // Adjacency check: combined zones must fit within MAX_ZONE_SPAN consecutive zones
-        const combinedZones = new Set([...ordersWithZones[i].zones, ...ordersWithZones[j].zones]);
-        if (!zonesAreAdjacent(combinedZones, zoneSortMap)) continue;
-
-        const interSize = [...ordersWithZones[i].zones].filter((z) =>
-          ordersWithZones[j].zones.has(z)
-        ).length;
-        qualifiedPairs.push({
-          key: `${ordersWithZones[i].orderId}-${ordersWithZones[j].orderId}`,
-          sim,
-          interSize,
-        });
-      }
+      const interSize = [...ordersWithZones[i].zones].filter((z) =>
+        ordersWithZones[j].zones.has(z)
+      ).length;
+      qualifiedPairs.push({
+        key: `${ordersWithZones[i].orderId}-${ordersWithZones[j].orderId}`,
+        sim,
+        interSize,
+      });
     }
   }
 
@@ -295,15 +291,6 @@ export function zoneBasedGroupOrders(
 
       for (const order of ordersWithZones) {
         if (assigned.has(order.orderId)) continue;
-
-        // Count how many current members share at least 1 zone with this candidate
-        const membersSharing = currentGroup.filter((member) =>
-          [...order.zones].some((z) => member.zones.has(z))
-        ).length;
-
-        // Require sharing with ≥2 members once batch has ≥2 members
-        const required = currentGroup.length >= 2 ? 2 : 1;
-        if (membersSharing < required) continue;
 
         // Adjacency check: batch zones + candidate zones must stay within MAX_ZONE_SPAN
         const batchZones = new Set(currentGroup.flatMap((m) => [...m.zones]));
