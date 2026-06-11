@@ -1,7 +1,7 @@
 # Batch Picking — Tehnička dokumentacija za developere
 
-> **Verzija**: 1.0.0  
-> **Zadnje ažuriranje**: 2026-06-02
+> **Verzija**: 1.1.0  
+> **Zadnje ažuriranje**: 2026-06-11
 
 ---
 
@@ -16,6 +16,7 @@
 - [WooCommerce integracija](#woocommerce-integracija)
 - [Batch engine](#batch-engine)
 - [Picking workflow](#picking-workflow)
+- [AI Asistent](#ai-asistent)
 - [Testiranje](#testiranje)
 - [Rješavanje problema](#rješavanje-problema)
 - [Dodavanje novih značajki](#dodavanje-novih-značajki)
@@ -56,6 +57,8 @@
 | ORM | Drizzle ORM |
 | DB | PostgreSQL (Supabase) |
 | API | tRPC 11 (end-to-end type-safe) |
+| AI | OpenRouter API (GPT-4.1-mini / Gemini 2.5 Flash fallback) |
+| Testovi | Vitest 4 (unit), Playwright 1.60 (E2E) |
 
 ---
 
@@ -65,7 +68,7 @@
 
 | Tablica | Opis |
 |---------|------|
-| `users` | Admin i picker korisnici (email, password_hash, role) |
+| `users` | Admin i picker korisnici (email, password_hash, role, active) |
 | `products` | Cache WooCommerce proizvoda (sku, title, image_url, author) |
 | `product_locations` | Skladišne lokacije po SKU (zone_code, shelf_code, route_position) |
 | `picking_routes` | Konfiguracija zona (zone_code, zone_name, sort_order) |
@@ -73,7 +76,7 @@
 | `order_items` | Stavke narudžbi (sku, quantity, product_title_snapshot, product_author_snapshot) |
 | `batches` | Picking nalozi (batch_code, batch_type, status, similarity_score) |
 | `batch_orders` | Veza batch ↔ narudžba (basket_label A–E) |
-| `batch_items` | Konsolidirani picking list (sku, product_title, author, total_quantity, basket_breakdown) |
+| `batch_items` | Konsolidirani picking list (sku, product_title, author, total_quantity, basket_breakdown, zone_code, shelf_code, route_position) |
 | `activity_logs` | Sustavni logovi (sync, generacija batcha, status promjene) |
 
 ### Statusi
@@ -92,6 +95,20 @@ draft → ready → in_progress → picked → packed → synced
 ```
 A, B, C, D, E
 ```
+
+### Zone (picking_routes)
+
+| Zone Code | Naziv | Sort Order |
+|-----------|-------|------------|
+| ZONA-A | Područje A | 1 |
+| ZONA-B | Područje B | 2 |
+| ZONA-C | Područje C | 3 |
+| ZONA-D | Područje D | 4 |
+| ZONA-E | Područje E | 5 |
+| ZONA-F | Područje F | 6 |
+| ZONA-G | Područje G | 7 |
+
+Zone A–C su kreirane seedom, D–G dodane migracijom `0002_add_missing_zones.sql`.
 
 ---
 
@@ -112,16 +129,40 @@ Backfill — ako cached produkt nema autora, ponovno se dohvaća s WooCommercea.
 
 ### batch-engine.ts
 
+**Algoritmi:**
+- **v3 (primarni)** — Zone-based Jaccard grupiranje sa zone adjacency ograničenjem
+- **v2 (fallback)** — SKU Jaccard grupiranje za narudžbe bez lokacijskih podataka
+
 **Glavne funkcije:**
-- `calculateJaccardSimilarity(skusA, skusB)` — Jaccard koeficijent
-- `buildSimilarityMatrix(orders)` — pairwise matrica
-- `generateBatches()` — greedy grupiranje narudžbi
+- `generateBatches()` — ulazna točka; odabire v3 ili v2 algoritam po narudžbi
+- `buildZoneProfiles(orders, locationMap)` — mapira SKU → zone set po narudžbi
+- `calculateZoneJaccard(zonesA, zonesB)` — Jaccard koeficijent između zone setova
+- `zonesAreAdjacent(zones, zoneSortMap, maxSpan)` — provjera da zone stanu u MAX_ZONE_SPAN susjednih zona
+- `zoneBasedGroupOrders(ordersWithZones, zoneSortMap, batchSize)` — v3 greedy grupiranje
+- `computeRoutePosition(zoneCode, shelfCode, zoneSortMap)` — formula: `sort_order * 1000 + shelf_num`
+- `calculateJaccardSimilarity(skusA, skusB)` — SKU Jaccard koeficijent (v2)
+- `buildSimilarityMatrix(orders)` — pairwise matrica (v2)
+- `greedyGroupOrders(orders, batchSize)` — SKU-based greedy grupiranje (v2 fallback)
+- `classifyBatchType(group)` — klasifikacija: smart / mixed / partial
 
 **Konstante:**
 ```typescript
-const BATCH_SIZE = 5;           // max narudžbi po batchu
-const SMART_THRESHOLD = 0.1;    // 10% overlap za "smart" klasifikaciju
+const BATCH_SIZE = 5;                    // max narudžbi po batchu
+const SMART_THRESHOLD = 0.1;             // 10% overlap za "smart" klasifikaciju
+const ZONE_JACCARD_THRESHOLD = 0.3;      // 30% zone overlap za seeding (v3)
+const MAX_ZONE_SPAN = 2;                 // max susjednih zona u batchu (npr. A+B ok, A+C ne)
+const EXCLUDED_SKUS = new Set(["9075"]); // SKU dostave — nije fizički artikl
+const BASKET_LABELS = ["A", "B", "C", "D", "E"] as const;
 ```
+
+### ai-service.ts
+
+**AI asistent za skladište:**
+- OpenRouter API integracija s model fallback mehanizmom
+- Primarni model: `openai/gpt-4.1-mini`
+- Fallback model: `google/gemini-2.5-flash`
+- System prompt na hrvatskom jeziku — kontekst o batch pickingu, WooCommerce integraciji, skladišnom workflowu
+- Podržava multi-turn konverzaciju (max 10 poruka, max 2000 znakova po poruci)
 
 ### status.ts
 
@@ -152,13 +193,12 @@ const SMART_THRESHOLD = 0.1;    // 10% overlap za "smart" klasifikaciju
 
 | Metoda | Input | Output | Opis |
 |--------|-------|--------|------|
-| `list` | — | `Batch[]` | Svi batch-ovi |
-| `getById` | `{ id: number }` | `Batch + items + orders` | Detalji batcha |
-| `generate` | — | `{ created: number }` | Generira batch-ove od narudžbi |
-| `updateStatus` | `{ id, status }` | `Batch` | Promjena statusa |
-| `getNextPending` | — | `BatchItem[]` | Sljedeći ne skupljeni item |
-| `markItemPicked` | `{ batchItemId }` | `BatchItem` | Označi item kao picked |
-| `markBatchPicked` | `{ id }` | `Batch` | Označi cijeli batch |
+| `list` | `{ status? }` | `Batch[]` | Svi batch-ovi (opcijski filter po statusu) |
+| `getById` | `{ id: number }` | `Batch + items + orders` | Detalji batcha sortirani po route_position |
+| `generate` | — | `{ created: number }` | Generira batch-ove (zone v3 + SKU v2 fallback) |
+| `updateStatus` | `{ id, status }` | `Batch` | Promjena statusa s audit logiranjem |
+| `markItemPicked` | `{ batchItemId, picked }` | `BatchItem` | Toggle item picked status |
+| `markBatchPicked` | `{ id }` | `Batch` | Označi cijeli batch kao picked |
 
 ### locationsRouter
 
@@ -167,7 +207,15 @@ const SMART_THRESHOLD = 0.1;    // 10% overlap za "smart" klasifikaciju
 | `list` | — | `Location[]` | Sve lokacije |
 | `upsert` | `{ sku, zone_code, shelf_code, route_position }` | `Location` | Dodaj/uredi lokaciju |
 | `delete` | `{ id }` | — | Obriši lokaciju |
-| `importCsv` | `{ rows[] }` | `{ inserted, errors }` | Masovni uvoz |
+| `importCsv` | `{ rows[] }` | `{ inserted, errors }` | Masovni uvoz iz CSV-a |
+| `listRoutes` | — | `PickingRoute[]` | Dohvati sve zone |
+| `upsertRoute` | `{ zone_code, zone_name, sort_order }` | `PickingRoute` | Dodaj/uredi zonu |
+
+### aiRouter
+
+| Metoda | Input | Output | Opis |
+|--------|-------|--------|------|
+| `chat` | `{ message, history[] }` | `{ reply }` | AI asistent (OpenRouter) |
 
 ---
 
@@ -189,7 +237,13 @@ const SMART_THRESHOLD = 0.1;    // 10% overlap za "smart" klasifikaciju
 
 | Ruta | Metoda | Opis |
 |------|--------|------|
-| `/api/webhooks/woocommerce` | `POST` | Primanje WooCommerce webhook događaja |
+| `/api/webhooks/woocommerce` | `POST` | Primanje WooCommerce webhook događaja (HMAC-SHA256 verifikacija) |
+
+### Health
+
+| Ruta | Metoda | Opis |
+|------|--------|------|
+| `/api/health` | `GET` | Health check za deployment monitoring |
 
 ---
 
@@ -209,6 +263,7 @@ NEXTAUTH_SECRET=your-secret-here
 WOO_API_URL=https://libar.hr
 WOO_CONSUMER_KEY=ck_...
 WOO_CONSUMER_SECRET=cs_...
+WOO_WEBHOOK_SECRET=your-webhook-secret
 
 # --- Sync ---
 SYNC_DAYS_BACK=7
@@ -216,6 +271,11 @@ SYNC_DAYS_BACK=7
 # --- Supabase ---
 NEXT_PUBLIC_SUPABASE_URL=https://...supabase.co
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=eyJ...
+
+# --- AI Asistent (opcionalno) ---
+OPENROUTER_API_KEY=sk-or-...
+OPENROUTER_MODEL=openai/gpt-4.1-mini
+OPENROUTER_FALLBACK_MODEL=google/gemini-2.5-flash
 ```
 
 ### Drizzle schema
@@ -265,84 +325,95 @@ export function extractAuthor(product: WooProduct): string | null {
 
 ### Webhook
 
-WooCommerce webhook šalje `POST` na `/api/webhooks/woocommerce` kada se narudžba promijeni. Handler verificira HMAC potpis i poziva `importSingleWooOrder()`.
+WooCommerce webhook šalje `POST` na `/api/webhooks/woocommerce` kada se narudžba promijeni. Handler verificira HMAC-SHA256 potpis i poziva `importSingleWooOrder()`.
+
+Podržani webhook topici:
+- `order.created` (status: processing) → uvoz narudžbe
+- `order.updated` → preskače ako već postoji
+- `order.completed` / `order.refunded` / `order.cancelled` → ažurira lokalni status
 
 ---
 
 ## Batch engine
 
-### Jaccard similarity
+### Pregled algoritama
+
+Sustav koristi dva algoritma za grupiranje narudžbi:
+
+| Algoritam | Koristi se za | Primarna metrika |
+|-----------|---------------|-----------------|
+| **v3 — Zone-based** | Narudžbe s lokacijskim podacima (≥1 SKU ima `product_locations`) | Zone Jaccard similarity + adjacency constraint |
+| **v2 — SKU Jaccard** (fallback) | Narudžbe bez lokacijskih podataka | SKU Jaccard similarity |
+
+### v3 algoritam — Zone-based grupiranje (primarni)
+
+**Trofazni greedy proces:**
+
+1. **Seeding** — pronalazi najbolji par narudžbi sa zone_jaccard ≥ 30%, uz uvjet da kombinirane zone stanu u MAX_ZONE_SPAN (2 susjedne zone)
+2. **Growth** — dodaje kandidate koji dijele ≥1 zonu s ≥2 postojeća člana, uz adjacency provjeru da batch ne prelazi 2 susjedne zone
+3. **Solo** — narudžbe bez kvalificiranog partnera idu kao pojedinačni batchevi
+
+**Zone adjacency constraint (v1.1.0):**
+
+Ograničava batch na maksimalno 2 susjedne zone definirane po `sort_order`:
 
 ```typescript
-function calculateJaccardSimilarity(skusA: string[], skusB: string[]): number {
-  const setA = new Set(skusA);
-  const setB = new Set(skusB);
-  const intersection = new Set([...setA].filter((x) => setB.has(x)));
-  const union = new Set([...setA, ...setB]);
-  return union.size === 0 ? 0 : intersection.size / union.size;
-}
+// zonesAreAdjacent() — provjerava da max(sort_order) - min(sort_order) < MAX_ZONE_SPAN
+// Primjeri (MAX_ZONE_SPAN = 2):
+// ZONA-A(1) + ZONA-B(2) → span 1 → ✅ dopušteno
+// ZONA-B(2) + ZONA-C(3) → span 1 → ✅ dopušteno
+// ZONA-A(1) + ZONA-C(3) → span 2 → ❌ odbijeno
+// ZONA-A(1) + ZONA-D(4) → span 3 → ❌ odbijeno
 ```
 
-### Greedy grupiranje
+**Route position formula:**
+```typescript
+route_position = zone_sort_order * 1000 + shelf_number
+// ZONA-B, polica B7 → 2 * 1000 + 7 = 2007
+```
+
+### v2 algoritam — SKU Jaccard (fallback)
 
 ```typescript
-function greedyGroupOrders(orders: OrderWithItems[]): BatchGroup[] {
-  const matrix = buildSimilarityMatrix(orders);
-  const ungrouped = new Set(orders.map((o) => o.orderId));
-  const groups: BatchGroup[] = [];
+// Jaccard similarity
+similarity(A, B) = |A.skus ∩ B.skus| / |A.skus ∪ B.skus|
+```
 
-  while (ungrouped.size > 0) {
-    const group: number[] = [];
+Greedy grupiranje:
+1. Izračunaj similarity maticu za sve parove
+2. Sortiraj parove po similarity (descending)
+3. Uzmi najsličniji par → nova grupa
+4. Dodaj narudžbe s najboljim prosječnim overlap-om
+5. Ponavljaj dok ne dosegne BATCH_SIZE (5)
 
-    // 1. Pronađi najsličniji par
-    let bestPair: [number, number] | null = null;
-    let bestScore = -1;
+### Klasifikacija batcha
 
-    for (const [key, score] of matrix) {
-      if (score > bestScore) {
-        const [a, b] = key.split("-").map(Number);
-        if (ungrouped.has(a) && ungrouped.has(b)) {
-          bestScore = score;
-          bestPair = [a, b];
-        }
-      }
-    }
+| Tip | Uvjet |
+|-----|-------|
+| `smart` | Prosječni SKU Jaccard ≥ 10% i batch ima 5 narudžbi |
+| `mixed` | Prosječni SKU Jaccard < 10% i batch ima 5 narudžbi |
+| `partial` | Batch ima manje od 5 narudžbi |
 
-    if (!bestPair) break;
+### Tok generiranja batcha
 
-    // 2. Inicijaliziraj grupu
-    group.push(...bestPair);
-    ungrouped.delete(bestPair[0]);
-    ungrouped.delete(bestPair[1]);
-
-    // 3. Dodaj preostale narudžbe
-    while (group.length < BATCH_SIZE && ungrouped.size > 0) {
-      let bestNext: number | null = null;
-      let bestAvg = -1;
-
-      for (const candidate of ungrouped) {
-        const avg = group.reduce((sum, member) => {
-          const key = `${Math.min(member, candidate)}-${Math.max(member, candidate)}`;
-          return sum + (matrix.get(key) || 0);
-        }, 0) / group.length;
-
-        if (avg > bestAvg) {
-          bestAvg = avg;
-          bestNext = candidate;
-        }
-      }
-
-      if (bestNext !== null) {
-        group.push(bestNext);
-        ungrouped.delete(bestNext);
-      }
-    }
-
-    groups.push({ orderIds: group, similarityScore: bestScore });
-  }
-
-  return groups;
-}
+```
+generateBatches()
+├─ Fetch: orders (status = pending_batch)
+├─ Fetch: order_items za te narudžbe
+├─ Preload: product_locations (SKU → zone + shelf) — bulk upit
+├─ Preload: picking_routes (zone → sort_order) — bulk upit
+├─ Preload: products (SKU → title, author, image) — bulk upit
+├─ Split narudžbe:
+│  ├─ S lokacijom → zoneBasedGroupOrders() [v3]
+│  └─ Bez lokacije → greedyGroupOrders() [v2 fallback]
+├─ Za svaku grupu:
+│  ├─ classifyBatchType()
+│  ├─ generateBatchCode() → npr. "B-001"
+│  ├─ INSERT batches
+│  ├─ INSERT batch_orders (basket labels A–E)
+│  └─ INSERT batch_items (s route_position, zone_code, shelf_code, author)
+├─ UPDATE orders → status: "batched"
+└─ INSERT activity_logs
 ```
 
 ---
@@ -351,7 +422,7 @@ function greedyGroupOrders(orders: OrderWithItems[]): BatchGroup[] {
 
 ### Picker screen (`/pick/[id]`)
 
-1. Učitava `batch_items` sortirane po `route_position`
+1. Učitava `batch_items` sortirane po `route_position` (zona → polica)
 2. Prikazuje SKU, naslov, autora, sliku, lokaciju, količinu
 3. Picker označi item kao picked → `markItemPicked` mutation
 4. Kada su svi itemi picked → `markBatchPicked` mutation
@@ -368,13 +439,50 @@ Konsolidacija — ako isti SKU postoji u 3 narudžbe, picker skuplja sve odjedno
 
 ---
 
+## AI Asistent
+
+### Opis
+
+Floating chat widget dostupan adminu za brza pitanja o batch pickingu, narudžbama i skladišnom workflowu.
+
+### Arhitektura
+
+- **Frontend**: `src/components/shared/ai-assistant.tsx` — React komponenta s chat UI
+- **Backend**: `src/server/services/ai-service.ts` — OpenRouter API poziv
+- **tRPC**: `ai.chat` mutacija u `src/server/trpc/routers/ai.ts`
+
+### Konfiguracija
+
+```bash
+OPENROUTER_API_KEY=sk-or-...                    # Obavezno za AI asistenta
+OPENROUTER_MODEL=openai/gpt-4.1-mini            # Primarni model
+OPENROUTER_FALLBACK_MODEL=google/gemini-2.5-flash  # Fallback ako primarni ne uspije
+```
+
+Bez `OPENROUTER_API_KEY`, AI asistent neće raditi ali ostatak aplikacije funkcionira normalno.
+
+---
+
 ## Testiranje
 
 ### Pokreni testove
 
 ```bash
-npm run test:run
+npm run test:run     # Pokreni jednom
+npm run test         # Watch mode
 ```
+
+### Pokrivenost testova (26 testova)
+
+| Grupa | Testovi |
+|-------|---------|
+| SKU Jaccard (v2) | Identični/disjunktni/parcijalni setovi, prazni setovi |
+| Greedy grupiranje (v2) | Batch veličina, parcijalni batchevi, sličnost, solo narudžba |
+| Klasifikacija batcha | partial, smart, mixed |
+| Zone profili (v3) | SKU→zona mapiranje, isključivanje SKU 9075, prazni mappingi, deduplikacija |
+| Zone Jaccard (v3) | Identični/disjunktni/parcijalni setovi |
+| Zone-based grupiranje (v3) | Dijeljene zone, adjacency constraint, solo batchevi, batch veličina |
+| Route position | Formula sort_order*1000+shelf, null → 9999 |
 
 ### Lokalno testiranje API-ja
 
@@ -393,13 +501,6 @@ curl -X POST http://localhost:3001/api/trpc/batches.generate \
   -H "Content-Type: application/json" \
   -H "Cookie: next-auth.session-token=..." \
   -d '{}'
-```
-
-### Debug mode
-
-```bash
-# Pokreni s debug logovima
-DEBUG=batch-picking npm run dev
 ```
 
 ---
@@ -440,6 +541,26 @@ ALTER TABLE batch_items ADD COLUMN IF NOT EXISTS author TEXT;
 ALTER TABLE order_items ADD COLUMN IF NOT EXISTS product_author_snapshot TEXT;
 ```
 
+### Zone nedostaju (ZONA-D do ZONA-G)
+
+Pokreni migraciju:
+```sql
+-- supabase/migrations/0002_add_missing_zones.sql
+INSERT INTO picking_routes (zone_code, zone_name, sort_order)
+VALUES
+  ('ZONA-D', 'ZONA-D', 4),
+  ('ZONA-E', 'ZONA-E', 5),
+  ('ZONA-F', 'ZONA-F', 6),
+  ('ZONA-G', 'ZONA-G', 7)
+ON CONFLICT (zone_code) DO NOTHING;
+```
+
+### AI asistent ne odgovara
+
+- Provjeri da je `OPENROUTER_API_KEY` postavljen i validan
+- Provjeri mrežnu konekciju prema `openrouter.ai`
+- Pogledaj server logove za specifičnu grešku modela
+
 ---
 
 ## Dodavanje novih značajki
@@ -470,9 +591,17 @@ ALTER TABLE order_items ADD COLUMN IF NOT EXISTS product_author_snapshot TEXT;
      batches: batchesRouter,
      orders: ordersRouter,
      locations: locationsRouter,
+     ai: aiRouter,
      novaStvar: novaStvarRouter,
    });
    ```
+
+### Promjena zone adjacency ograničenja
+
+Za promjenu broja dopuštenih susjednih zona, izmijeni konstantu u `src/server/services/batch-engine.ts`:
+```typescript
+const MAX_ZONE_SPAN = 3; // npr. 3 = dopuštene 3 susjedne zone (A+B+C)
+```
 
 ---
 
@@ -483,12 +612,12 @@ batch-picking/
 ├── src/
 │   ├── app/
 │   │   ├── (auth)/          # Login stranica
-│   │   ├── (admin)/         # Dashboard, Narudžbe, Batchevi, Lokacije
+│   │   ├── (admin)/         # Dashboard, Narudžbe, Batchevi, Lokacije, Korisnici
 │   │   ├── (picker)/        # Lista batch-eva, Picking screen
-│   │   ├── api/             # tRPC router, NextAuth, Woo webhooks
+│   │   ├── api/             # tRPC router, NextAuth, Woo webhooks, Health
 │   │   └── layout.tsx       # Root layout
 │   ├── components/
-│   │   ├── shared/          # Reusable UI
+│   │   ├── shared/          # Reusable UI, AI asistent
 │   │   └── providers/       # Theme, Session
 │   ├── lib/
 │   │   ├── auth.ts          # NextAuth config
@@ -499,26 +628,57 @@ batch-picking/
 │   │   ├── db/
 │   │   │   ├── schema.ts    # Drizzle schema
 │   │   │   ├── index.ts     # Connection
+│   │   │   ├── seed.ts      # Seed podaci (zone, lokacije, korisnici)
 │   │   │   └── supabase-admin.ts
 │   │   ├── trpc/
 │   │   │   ├── init.ts      # Context + procedures
-│   │   │   ├── router.ts    # App router
-│   │   │   └── routers/     # Batches, Orders, Locations
+│   │   │   ├── router.ts    # App router (batches, orders, locations, ai)
+│   │   │   └── routers/     # Batches, Orders, Locations, AI
 │   │   └── services/
-│   │       ├── batch-engine.ts
-│   │       ├── woo-sync.ts
-│   │       └── status.ts
+│   │       ├── batch-engine.ts   # Zone v3 + SKU v2 grupiranje
+│   │       ├── woo-sync.ts       # WooCommerce sync
+│   │       ├── ai-service.ts     # OpenRouter AI asistent
+│   │       └── status.ts         # Batch status workflow
 │   └── utils/
-│       └── supabase/
+│       └── supabase/        # Supabase client helpers
+├── tests/
+│   └── unit/
+│       └── batch-engine.test.ts  # 26 unit testova
 ├── supabase/
-│   ├── schema.sql
+│   ├── schema.sql           # SQL schema
 │   └── migrations/
-├── .env.example
-├── render.yaml
-├── README.md
+│       ├── 0001_add_author_columns.sql
+│       └── 0002_add_missing_zones.sql
+├── .env.example             # Primjer env varijabli
+├── render.yaml              # Render deploy konfiguracija
+├── README.md                # Pregled projekta
 ├── DEVELOPER.md             # Ova datoteka
-└── USER_GUIDE.md
+└── USER_GUIDE.md            # Upute za skladište
 ```
+
+---
+
+## Changelog
+
+### v1.1.0 (2026-06-11)
+
+- **Zone-based batch grupiranje (v3)** — primarni algoritam koji koristi zone umjesto SKU-ova za inteligentnije grupiranje narudžbi
+- **Zone adjacency constraint** — ograničava batch na max 2 susjedne zone kako bi se smanjilo hodanje pickera
+- **AI asistent** — chatbot za skladišno osoblje (OpenRouter: GPT-4.1-mini + Gemini fallback)
+- **N+1 query eliminacija** — bulk preload svih product_locations, picking_routes i products
+- **Admin dashboard** — statistike, activity log, status badges
+- **User management** — CRUD za admin i picker korisnike
+- **Zone management** — upsert/list zona kroz admin UI
+- **Health endpoint** — `/api/health` za deployment monitoring
+- **Render deployment** — `render.yaml` konfiguracija
+- **26 unit testova** — pokrivaju oba algoritma, zone profile, route position
+
+### v1.0.0 (2026-06-02)
+
+- Inicijalna verzija s SKU Jaccard algoritmom (v2)
+- WooCommerce sinkronizacija s webhook podrškom
+- Picker workflow s basket breakdown
+- Admin panel s lokacijama i batchevima
 
 ---
 
