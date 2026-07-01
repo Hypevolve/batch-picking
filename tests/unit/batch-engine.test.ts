@@ -73,6 +73,19 @@ describe("greedyGroupOrders", () => {
     expect(groups).toHaveLength(1);
     expect(groups[0]).toHaveLength(1);
   });
+
+  it("never exceeds 60 books per batch", () => {
+    const orders = Array.from({ length: 4 }, (_, i) => ({
+      orderId: i + 1,
+      skus: ["A", "B"],
+      bookCount: 25,
+    }));
+    const groups = greedyGroupOrders(orders, 5);
+    for (const g of groups) {
+      const books = g.reduce((s, o) => s + (o.bookCount ?? o.skus.length), 0);
+      expect(books).toBeLessThanOrEqual(60);
+    }
+  });
 });
 
 describe("classifyBatchType", () => {
@@ -239,6 +252,63 @@ describe("zoneBasedGroupOrders", () => {
     }));
     const result = zoneBasedGroupOrders(orders, zoneSortMap, 5);
     expect(result.every((g) => g.length <= 5)).toBe(true);
+  });
+
+  // ─── A2 rule: identical / strongly overlapping orders merge regardless of zones ───
+
+  it("merges two identical orders even when their books span far zones (A2)", () => {
+    const orders = [
+      { orderId: 1, skus: ["kA", "kE"], zones: new Set(["ZONA-A", "ZONA-E"]) },
+      { orderId: 2, skus: ["kA", "kE"], zones: new Set(["ZONA-A", "ZONA-E"]) },
+    ];
+    const result = zoneBasedGroupOrders(orders, zoneSortMap);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toHaveLength(2);
+  });
+
+  it("merges identical orders spanning zones A + C (was split by MAX_ZONE_SPAN)", () => {
+    const orders = [
+      { orderId: 1, skus: ["kA", "kC"], zones: new Set(["ZONA-A", "ZONA-C"]) },
+      { orderId: 2, skus: ["kA", "kC"], zones: new Set(["ZONA-A", "ZONA-C"]) },
+    ];
+    const result = zoneBasedGroupOrders(orders, zoneSortMap);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toHaveLength(2);
+  });
+
+  it("merges strongly overlapping orders across far zones, leaves unrelated ones solo", () => {
+    const orders = [
+      { orderId: 1, skus: ["a", "b", "c", "d"], zones: new Set(["ZONA-A"]) },
+      { orderId: 2, skus: ["a", "b", "c", "e"], zones: new Set(["ZONA-E"]) }, // 3/5 overlap with #1
+      { orderId: 3, skus: ["x", "y"], zones: new Set(["ZONA-C"]) }, // unrelated + far
+    ];
+    const result = zoneBasedGroupOrders(orders, zoneSortMap);
+    expect(result).toHaveLength(2);
+    const merged = result.find((g) => g.length === 2)?.map((o) => o.orderId).sort();
+    expect(merged).toEqual([1, 2]);
+  });
+
+  it("keeps identical orders apart when combined books exceed cart capacity (60)", () => {
+    const orders = [
+      { orderId: 1, skus: ["kA"], zones: new Set(["ZONA-A"]), bookCount: 40 },
+      { orderId: 2, skus: ["kA"], zones: new Set(["ZONA-A"]), bookCount: 40 },
+    ];
+    const result = zoneBasedGroupOrders(orders, zoneSortMap);
+    expect(result).toHaveLength(2);
+  });
+
+  it("never exceeds 60 books per batch", () => {
+    const orders = Array.from({ length: 4 }, (_, i) => ({
+      orderId: i + 1,
+      skus: ["A"],
+      zones: new Set(["ZONA-B"]),
+      bookCount: 25,
+    }));
+    const result = zoneBasedGroupOrders(orders, zoneSortMap, 5);
+    for (const g of result) {
+      const books = g.reduce((s, o) => s + (o.bookCount ?? o.skus.length), 0);
+      expect(books).toBeLessThanOrEqual(60);
+    }
   });
 });
 

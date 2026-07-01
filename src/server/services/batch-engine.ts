@@ -1,14 +1,23 @@
 import { supabaseAdmin } from "@/server/db/supabase-admin";
 import { generateBatchCode } from "@/lib/utils";
 
-const BATCH_SIZE = 5;
+const BATCH_SIZE = 5; // max orders per batch (= 5 baskets A–E on the cart)
+const MAX_BOOKS_PER_BATCH = 60; // max physical books (sum of quantities) that fit in one cart
 const SMART_THRESHOLD = 0.1; // 10% overlap for "smart" classification
 const MAX_ZONE_SPAN = 2; // max adjacent zones allowed in one batch (2 = e.g. A+B ok, A+C not ok)
+const STRONG_SKU_OVERLAP = 0.5; // SKU Jaccard ≥ this → orders merge regardless of zones (A2 rule)
 const EXCLUDED_SKUS = new Set(["9075"]); // delivery cost SKU — not a physical item
 
 interface OrderWithItems {
   orderId: number;
   skus: string[];
+  /** Total physical books in the order (sum of item quantities). Falls back to skus.length when omitted. */
+  bookCount?: number;
+}
+
+/** Physical book count used for the MAX_BOOKS_PER_BATCH capacity check. */
+function orderBookCount(order: OrderWithItems): number {
+  return order.bookCount ?? order.skus.length;
 }
 
 interface OrderWithZones extends OrderWithItems {
@@ -72,13 +81,16 @@ export function greedyGroupOrders(
   while (assigned.size < ordersWithItems.length) {
     const currentGroup: OrderWithItems[] = [];
 
-    // Find the best unassigned seed pair
+    // Find the best unassigned seed pair that fits in one cart
     let seedFound = false;
     for (const [key] of sortedPairs) {
       const [idA, idB] = key.split("-").map(Number);
       if (!assigned.has(idA) && !assigned.has(idB)) {
         const orderA = ordersWithItems.find((o) => o.orderId === idA)!;
         const orderB = ordersWithItems.find((o) => o.orderId === idB)!;
+        if (orderBookCount(orderA) + orderBookCount(orderB) > MAX_BOOKS_PER_BATCH) {
+          continue; // pair exceeds cart capacity — try next pair
+        }
         currentGroup.push(orderA, orderB);
         assigned.add(idA);
         assigned.add(idB);
@@ -102,9 +114,11 @@ export function greedyGroupOrders(
     while (currentGroup.length < batchSize) {
       let bestCandidate: OrderWithItems | null = null;
       let bestScore = -1;
+      const batchBooks = currentGroup.reduce((s, m) => s + orderBookCount(m), 0);
 
       for (const order of ordersWithItems) {
         if (assigned.has(order.orderId)) continue;
+        if (batchBooks + orderBookCount(order) > MAX_BOOKS_PER_BATCH) continue; // cart full
 
         // Average similarity to current group members
         let totalSim = 0;
@@ -222,36 +236,51 @@ export function zoneBasedGroupOrders(
   const groups: OrderWithItems[][] = [];
   const assigned = new Set<number>();
 
-  // Pre-compute qualified pairs (zone_jaccard ≥ threshold)
+  // Pre-compute qualified pairs (zone-adjacent OR strong book overlap)
   const qualifiedPairs: Array<{
     key: string;
     sim: number;
     interSize: number;
+    skuSim: number;
+    strongOverlap: boolean;
   }> = [];
 
   for (let i = 0; i < ordersWithZones.length; i++) {
     for (let j = i + 1; j < ordersWithZones.length; j++) {
-      const combinedZones = new Set([...ordersWithZones[i].zones, ...ordersWithZones[j].zones]);
-      if (!zonesAreAdjacent(combinedZones, zoneSortMap)) continue;
+      const a = ordersWithZones[i];
+      const b = ordersWithZones[j];
 
-      const sim = calculateZoneJaccard(
-        ordersWithZones[i].zones,
-        ordersWithZones[j].zones
-      );
-      const interSize = [...ordersWithZones[i].zones].filter((z) =>
-        ordersWithZones[j].zones.has(z)
-      ).length;
+      // Capacity: a seed pair must physically fit in one cart
+      if (orderBookCount(a) + orderBookCount(b) > MAX_BOOKS_PER_BATCH) continue;
+
+      const skuSim = calculateJaccardSimilarity(a.skus, b.skus);
+      const strongOverlap = skuSim >= STRONG_SKU_OVERLAP;
+
+      const combinedZones = new Set([...a.zones, ...b.zones]);
+      const zonesOk = zonesAreAdjacent(combinedZones, zoneSortMap);
+
+      // A2 rule: pair qualifies if zones are adjacent OR the orders share most of their books
+      if (!zonesOk && !strongOverlap) continue;
+
+      const sim = calculateZoneJaccard(a.zones, b.zones);
+      const interSize = [...a.zones].filter((z) => b.zones.has(z)).length;
       qualifiedPairs.push({
-        key: `${ordersWithZones[i].orderId}-${ordersWithZones[j].orderId}`,
+        key: `${a.orderId}-${b.orderId}`,
         sim,
         interSize,
+        skuSim,
+        strongOverlap,
       });
     }
   }
 
-  // Sort by jaccard desc, then intersection size desc (tiebreak)
-  qualifiedPairs.sort((a, b) =>
-    b.sim !== a.sim ? b.sim - a.sim : b.interSize - a.interSize
+  // Seed priority: strong book overlap first, then SKU similarity, then zone jaccard, then zone overlap
+  qualifiedPairs.sort(
+    (a, b) =>
+      Number(b.strongOverlap) - Number(a.strongOverlap) ||
+      b.skuSim - a.skuSim ||
+      b.sim - a.sim ||
+      b.interSize - a.interSize
   );
 
   while (assigned.size < ordersWithZones.length) {
@@ -277,34 +306,49 @@ export function zoneBasedGroupOrders(
       // Step 3: Solo — no qualifying partner found for remaining orders
       for (const order of ordersWithZones) {
         if (!assigned.has(order.orderId)) {
-          groups.push([{ orderId: order.orderId, skus: order.skus }]);
+          groups.push([{ orderId: order.orderId, skus: order.skus, bookCount: order.bookCount }]);
           assigned.add(order.orderId);
         }
       }
       break;
     }
 
-    // Step 2: Grow — add candidates meeting zone overlap condition
+    // Step 2: Grow — add candidates that stay zone-adjacent OR strongly share books, within capacity
     while (currentGroup.length < batchSize) {
       let bestCandidate: OrderWithZones | null = null;
+      let bestStrong = -1; // prefer strong book overlap over mere zone proximity
       let bestSharedZones = -1;
+      const batchBooks = currentGroup.reduce((s, m) => s + orderBookCount(m), 0);
 
       for (const order of ordersWithZones) {
         if (assigned.has(order.orderId)) continue;
+        if (batchBooks + orderBookCount(order) > MAX_BOOKS_PER_BATCH) continue; // cart full
+
+        // A2: allow if books strongly overlap an existing member (overrides zone span)
+        const strongOverlap = currentGroup.some(
+          (m) => calculateJaccardSimilarity(order.skus, m.skus) >= STRONG_SKU_OVERLAP
+        );
 
         // Adjacency check: batch zones + candidate zones must stay within MAX_ZONE_SPAN
         const batchZones = new Set(currentGroup.flatMap((m) => [...m.zones]));
         for (const z of order.zones) batchZones.add(z);
-        if (!zonesAreAdjacent(batchZones, zoneSortMap)) continue;
+        const zonesOk = zonesAreAdjacent(batchZones, zoneSortMap);
 
-        // Among valid candidates, prefer the one with most shared zone coverage
+        if (!zonesOk && !strongOverlap) continue;
+
+        // Among valid candidates, prefer strong book overlap, then most shared zone coverage
         const sharedZones = new Set(
           [...order.zones].filter((z) =>
             currentGroup.some((m) => m.zones.has(z))
           )
         ).size;
 
-        if (sharedZones > bestSharedZones) {
+        const strongFlag = strongOverlap ? 1 : 0;
+        if (
+          strongFlag > bestStrong ||
+          (strongFlag === bestStrong && sharedZones > bestSharedZones)
+        ) {
+          bestStrong = strongFlag;
           bestSharedZones = sharedZones;
           bestCandidate = order;
         }
@@ -318,7 +362,9 @@ export function zoneBasedGroupOrders(
       }
     }
 
-    groups.push(currentGroup.map((o) => ({ orderId: o.orderId, skus: o.skus })));
+    groups.push(
+      currentGroup.map((o) => ({ orderId: o.orderId, skus: o.skus, bookCount: o.bookCount }))
+    );
   }
 
   return groups;
@@ -396,14 +442,20 @@ export async function generateBatches(): Promise<{
     zoneSortMap.set(route.zone_code, route.sort_order);
   }
 
-  // Build orders with SKUs
+  // Build orders with SKUs and physical book count (sum of quantities, excluding delivery SKU)
   const ordersWithItems: OrderWithItems[] = unbatchedOrders.map(
-    (order: { id: number }) => ({
-      orderId: order.id,
-      skus: items
-        .filter((item: { order_id: number }) => item.order_id === order.id)
-        .map((item: { sku: string }) => item.sku),
-    })
+    (order: { id: number }) => {
+      const orderItems = items.filter(
+        (item: { order_id: number }) => item.order_id === order.id
+      );
+      return {
+        orderId: order.id,
+        skus: orderItems.map((item: { sku: string }) => item.sku),
+        bookCount: orderItems
+          .filter((item: { sku: string }) => !EXCLUDED_SKUS.has(item.sku))
+          .reduce((sum: number, item: { quantity: number }) => sum + item.quantity, 0),
+      };
+    }
   );
 
   // Preload all products for SKUs in these orders (eliminates N+1 queries)
