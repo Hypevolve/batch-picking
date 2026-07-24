@@ -156,6 +156,17 @@ describe("buildZoneProfiles", () => {
     const result = buildZoneProfiles(orders, locationMap);
     expect(result[0].zones).toEqual(new Set(["ZONA-B"]));
   });
+
+  it("treats zone codes case-insensitively (ZONA-b === ZONA-B)", () => {
+    // Locations are typed by hand; a stray lowercase code must not split one zone into two.
+    const mixedCaseMap = new Map([
+      ["SKU-1", "ZONA-B"],
+      ["SKU-2", "ZONA-b"],
+    ]);
+    const orders = [{ orderId: 1, skus: ["SKU-1", "SKU-2"] }];
+    const result = buildZoneProfiles(orders, mixedCaseMap);
+    expect(result[0].zones).toEqual(new Set(["ZONA-B"]));
+  });
 });
 
 describe("calculateZoneJaccard", () => {
@@ -288,6 +299,41 @@ describe("zoneBasedGroupOrders", () => {
     expect(merged).toEqual([1, 2]);
   });
 
+  // ─── Shared-title merge: big orders that share ≥3 titles but dilute below the Jaccard threshold ───
+
+  it("merges big orders that share 3 titles despite low overlap % and far-zone stragglers", () => {
+    // Real case (Bojan, 24.7.): ~15-book orders, mostly zone A, a couple books in far zones,
+    // sharing 5-6 titles. Jaccard here ≈ 3/13 ≈ 0.23 (below STRONG_SKU_OVERLAP=0.5),
+    // and combined zones A+F+G span far beyond MAX_ZONE_SPAN — so neither current path merges them.
+    const farZoneSortMap = new Map([
+      ["ZONA-A", 1],
+      ["ZONA-F", 6],
+      ["ZONA-G", 7],
+    ]);
+    const orders = [
+      { orderId: 1, skus: ["s1", "s2", "s3", "a1", "a2", "a3", "a4", "a5"], zones: new Set(["ZONA-A", "ZONA-F"]) },
+      { orderId: 2, skus: ["s1", "s2", "s3", "b1", "b2", "b3", "b4", "b5"], zones: new Set(["ZONA-A", "ZONA-G"]) },
+    ];
+    const result = zoneBasedGroupOrders(orders, farZoneSortMap);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toHaveLength(2);
+  });
+
+  it("keeps orders apart when they share only 2 titles across far zones", () => {
+    // Boundary: below the 3-shared-title rule, low Jaccard + far zones must still go solo.
+    const farZoneSortMap = new Map([
+      ["ZONA-A", 1],
+      ["ZONA-F", 6],
+      ["ZONA-G", 7],
+    ]);
+    const orders = [
+      { orderId: 1, skus: ["s1", "s2", "a1", "a2", "a3", "a4", "a5"], zones: new Set(["ZONA-A", "ZONA-F"]) },
+      { orderId: 2, skus: ["s1", "s2", "b1", "b2", "b3", "b4", "b5"], zones: new Set(["ZONA-A", "ZONA-G"]) },
+    ];
+    const result = zoneBasedGroupOrders(orders, farZoneSortMap);
+    expect(result).toHaveLength(2);
+  });
+
   it("keeps identical orders apart when combined books exceed cart capacity (60)", () => {
     const orders = [
       { orderId: 1, skus: ["kA"], zones: new Set(["ZONA-A"]), bookCount: 40 },
@@ -333,5 +379,9 @@ describe("computeRoutePosition", () => {
 
   it("uses fallback sort_order 9 for unknown zones", () => {
     expect(computeRoutePosition("ZONA-X", "X5", zoneSortMap)).toBe(9005);
+  });
+
+  it("resolves zone sort order case-insensitively (ZONA-b uses ZONA-B's order)", () => {
+    expect(computeRoutePosition("ZONA-b", "b7", zoneSortMap)).toBe(2007);
   });
 });

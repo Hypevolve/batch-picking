@@ -6,6 +6,9 @@ const MAX_BOOKS_PER_BATCH = 60; // max physical books (sum of quantities) that f
 const SMART_THRESHOLD = 0.1; // 10% overlap for "smart" classification
 const MAX_ZONE_SPAN = 2; // max adjacent zones allowed in one batch (2 = e.g. A+B ok, A+C not ok)
 const STRONG_SKU_OVERLAP = 0.5; // SKU Jaccard ≥ this → orders merge regardless of zones (A2 rule)
+const MIN_SHARED_SKUS = 3; // orders sharing ≥ this many identical titles merge regardless of zones.
+// Absolute count instead of a percentage: on big orders (e.g. 15 books) the Jaccard of 5 shared
+// titles dilutes to ~0.2 and slips under STRONG_SKU_OVERLAP, yet the warehouse still wants them merged.
 const EXCLUDED_SKUS = new Set(["9075"]); // delivery cost SKU — not a physical item
 
 interface OrderWithItems {
@@ -24,6 +27,15 @@ interface OrderWithZones extends OrderWithItems {
   zones: Set<string>;
 }
 
+/**
+ * Canonical form of a zone code. Locations are entered by hand, so a stray
+ * lowercase ("ZONA-b" vs "ZONA-B") must not be treated as a separate zone —
+ * that would inflate a batch's zone span and break the route lookup.
+ */
+export function normalizeZoneCode(code: string): string {
+  return code.trim().toUpperCase();
+}
+
 // ─── SKU Jaccard (v2 — kept as fallback) ────────────────────────────────────
 
 /**
@@ -40,6 +52,26 @@ export function calculateJaccardSimilarity(
 
   if (union.size === 0) return 0;
   return intersection.size / union.size;
+}
+
+/**
+ * Count how many identical SKUs two orders share (intersection size).
+ * Used by the A2 rule as an absolute alternative to the Jaccard percentage.
+ */
+export function sharedSkuCount(skusA: string[], skusB: string[]): number {
+  const setB = new Set(skusB);
+  return new Set(skusA.filter((sku) => setB.has(sku))).size;
+}
+
+/**
+ * Whether two orders overlap enough on books to merge regardless of zones (A2 rule):
+ * either a strong Jaccard ratio, or at least MIN_SHARED_SKUS identical titles.
+ */
+function booksStronglyOverlap(skusA: string[], skusB: string[]): boolean {
+  return (
+    calculateJaccardSimilarity(skusA, skusB) >= STRONG_SKU_OVERLAP ||
+    sharedSkuCount(skusA, skusB) >= MIN_SHARED_SKUS
+  );
 }
 
 /**
@@ -204,7 +236,7 @@ export function buildZoneProfiles(
     zones: new Set(
       order.skus
         .filter((sku) => !EXCLUDED_SKUS.has(sku) && locationMap.has(sku))
-        .map((sku) => locationMap.get(sku)!)
+        .map((sku) => normalizeZoneCode(locationMap.get(sku)!))
     ),
   }));
 }
@@ -254,7 +286,7 @@ export function zoneBasedGroupOrders(
       if (orderBookCount(a) + orderBookCount(b) > MAX_BOOKS_PER_BATCH) continue;
 
       const skuSim = calculateJaccardSimilarity(a.skus, b.skus);
-      const strongOverlap = skuSim >= STRONG_SKU_OVERLAP;
+      const strongOverlap = booksStronglyOverlap(a.skus, b.skus);
 
       const combinedZones = new Set([...a.zones, ...b.zones]);
       const zonesOk = zonesAreAdjacent(combinedZones, zoneSortMap);
@@ -325,8 +357,8 @@ export function zoneBasedGroupOrders(
         if (batchBooks + orderBookCount(order) > MAX_BOOKS_PER_BATCH) continue; // cart full
 
         // A2: allow if books strongly overlap an existing member (overrides zone span)
-        const strongOverlap = currentGroup.some(
-          (m) => calculateJaccardSimilarity(order.skus, m.skus) >= STRONG_SKU_OVERLAP
+        const strongOverlap = currentGroup.some((m) =>
+          booksStronglyOverlap(order.skus, m.skus)
         );
 
         // Adjacency check: batch zones + candidate zones must stay within MAX_ZONE_SPAN
@@ -381,7 +413,7 @@ export function computeRoutePosition(
   zoneSortMap: Map<string, number>
 ): number {
   if (!zoneCode || !shelfCode) return 9999;
-  const sortOrder = zoneSortMap.get(zoneCode) ?? 9;
+  const sortOrder = zoneSortMap.get(normalizeZoneCode(zoneCode)) ?? 9;
   const shelfNum = parseInt(shelfCode.replace(/[^0-9]/g, ""), 10) || 0;
   return sortOrder * 1000 + shelfNum;
 }
@@ -428,7 +460,10 @@ export async function generateBatches(): Promise<{
   const locationMap = new Map<string, { zone_code: string; shelf_code: string }>();
   for (const loc of allLocations || []) {
     if (!locationMap.has(loc.sku)) {
-      locationMap.set(loc.sku, { zone_code: loc.zone_code, shelf_code: loc.shelf_code });
+      locationMap.set(loc.sku, {
+        zone_code: normalizeZoneCode(loc.zone_code),
+        shelf_code: loc.shelf_code,
+      });
     }
   }
 
@@ -439,7 +474,7 @@ export async function generateBatches(): Promise<{
 
   const zoneSortMap = new Map<string, number>();
   for (const route of routes || []) {
-    zoneSortMap.set(route.zone_code, route.sort_order);
+    zoneSortMap.set(normalizeZoneCode(route.zone_code), route.sort_order);
   }
 
   // Build orders with SKUs and physical book count (sum of quantities, excluding delivery SKU)
