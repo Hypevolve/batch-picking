@@ -1,6 +1,30 @@
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "";
-const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || "openai/gpt-4.1-mini";
-const OPENROUTER_FALLBACK_MODEL = process.env.OPENROUTER_FALLBACK_MODEL || "google/gemini-2.5-flash";
+
+/**
+ * Modeli koje OpenRouter gasi -> zamjena (OpenRouter /api/v1/models, polje expiration_date).
+ * Env varijabla na Renderu jača je od zadane vrijednosti, pa se i model iz env-a propušta
+ * kroz ovu mapu: umjesto da na dan gašenja svaki poziv padne, koristi se zamjena.
+ */
+export const RETIRED_MODELS: Readonly<Record<string, string>> = {
+  // Oba se gase 20.10.2026. Zamjena: ista cijena, ZDR s EU endpointom, structured outputs.
+  "google/gemini-2.5-flash": "google/gemini-3.5-flash-lite",
+  "google/gemini-2.5-flash-lite": "google/gemini-3.5-flash-lite",
+};
+
+/** Zamjena za ugašeni model, ili isti model ako nije na popisu. */
+export function activeModel(model: string): string {
+  const replacement = RETIRED_MODELS[model];
+  if (replacement) {
+    console.warn(`[AI] Model ${model} je ugašen na OpenRouteru, koristi se ${replacement}`);
+    return replacement;
+  }
+  return model;
+}
+
+const OPENROUTER_MODEL = activeModel(process.env.OPENROUTER_MODEL || "openai/gpt-4.1-mini");
+const OPENROUTER_FALLBACK_MODEL = activeModel(
+  process.env.OPENROUTER_FALLBACK_MODEL || "google/gemini-3.5-flash-lite",
+);
 
 interface OpenRouterMessage {
   role: "user" | "assistant" | "system";
