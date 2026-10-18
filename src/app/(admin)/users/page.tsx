@@ -1,9 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { createClient } from "@/utils/supabase/client";
 import {
-  Users,
   Plus,
   X,
   Pencil,
@@ -11,7 +9,6 @@ import {
   UserX,
   AlertCircle,
   CheckCircle2,
-  RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -32,6 +29,32 @@ interface UserForm {
 }
 
 const emptyForm: UserForm = { email: "", name: "", role: "picker", password: "" };
+const MIN_PASSWORD_LENGTH = 8;
+
+// Users are managed through the admin-only tRPC router; passwords are hashed on the server.
+function trpcErrorMessage(body: unknown): string {
+  const message = (body as { error?: { message?: string } } | null)?.error?.message;
+  if (!message) return "Nepoznata greška";
+  try {
+    const issues = JSON.parse(message);
+    if (Array.isArray(issues) && issues[0]?.message) return issues[0].message;
+  } catch {
+    // not a validation error list
+  }
+  return message;
+}
+
+async function callUsersApi<T>(procedure: string, input?: unknown): Promise<T> {
+  const res = await fetch(
+    `/api/trpc/users.${procedure}`,
+    input === undefined
+      ? undefined
+      : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) }
+  );
+  const body = await res.json().catch(() => null);
+  if (!res.ok || body?.error) throw new Error(trpcErrorMessage(body));
+  return body.result.data as T;
+}
 
 export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([]);
@@ -58,12 +81,13 @@ export default function UsersPage() {
   }, []);
 
   async function loadUsers() {
-    const supabase = createClient();
-    const { data } = await supabase
-      .from("users")
-      .select("*")
-      .order("created_at", { ascending: true });
-    setUsers(data || []);
+    try {
+      setUsers(await callUsersApi<User[]>("list"));
+    } catch (err) {
+      // State setters only (not showToast), so the mount effect has no dependencies.
+      setToast({ message: "Greška pri učitavanju korisnika: " + (err as Error).message, type: "error" });
+      setTimeout(() => setToast(null), 3000);
+    }
     setLoading(false);
   }
 
@@ -84,78 +108,55 @@ export default function UsersPage() {
     setShowModal(true);
   }
 
-  async function hashPassword(password: string): Promise<string> {
-    const encoder = new TextEncoder();
-    const data = encoder.encode(password);
-    const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-    return Array.from(new Uint8Array(hashBuffer))
-      .map((b) => b.toString(16).padStart(2, "0"))
-      .join("");
-  }
-
   async function handleSave() {
     if (!form.email || !form.name) return;
     if (!editingId && !form.password) return;
+    if (form.password && form.password.length < MIN_PASSWORD_LENGTH) {
+      showToast(`Lozinka mora imati barem ${MIN_PASSWORD_LENGTH} znakova`, "error");
+      return;
+    }
     setSaving(true);
-    const supabase = createClient();
 
-    if (editingId) {
-      const updateData: Record<string, unknown> = {
-        name: form.name,
-        role: form.role,
-        updated_at: new Date().toISOString(),
-      };
-      if (form.password) {
-        updateData.password_hash = await hashPassword(form.password);
-      }
-      const { error } = await supabase
-        .from("users")
-        .update(updateData)
-        .eq("id", editingId);
-
-      if (error) {
-        showToast("Greška pri spremanju: " + error.message, "error");
-      } else {
+    try {
+      if (editingId) {
+        await callUsersApi("update", {
+          id: editingId,
+          name: form.name,
+          role: form.role,
+          password: form.password,
+        });
         showToast("Korisnik uspješno ažuriran", "success");
-      }
-    } else {
-      const password_hash = await hashPassword(form.password);
-      const { error } = await supabase.from("users").insert({
-        email: form.email,
-        name: form.name,
-        role: form.role,
-        password_hash,
-        active: true,
-      });
-
-      if (error) {
-        showToast("Greška pri dodavanju: " + error.message, "error");
       } else {
+        await callUsersApi("create", {
+          email: form.email,
+          name: form.name,
+          role: form.role,
+          password: form.password,
+        });
         showToast("Korisnik uspješno dodan", "success");
       }
+      setShowModal(false);
+      loadUsers();
+    } catch (err) {
+      const prefix = editingId ? "Greška pri spremanju: " : "Greška pri dodavanju: ";
+      showToast(prefix + (err as Error).message, "error");
     }
 
     setSaving(false);
-    setShowModal(false);
-    loadUsers();
   }
 
   async function toggleActive(user: User) {
-    const supabase = createClient();
-    const { error } = await supabase
-      .from("users")
-      .update({ active: !user.active, updated_at: new Date().toISOString() })
-      .eq("id", user.id);
-
-    if (error) {
-      showToast("Greška pri promjeni statusa: " + error.message, "error");
-    } else {
-      showToast(
-        user.active ? "Korisnički račun deaktiviran" : "Korisnički račun aktiviran",
-        "success"
-      );
-      loadUsers();
+    try {
+      await callUsersApi("setActive", { id: user.id, active: !user.active });
+    } catch (err) {
+      showToast("Greška pri promjeni statusa: " + (err as Error).message, "error");
+      return;
     }
+    showToast(
+      user.active ? "Korisnički račun deaktiviran" : "Korisnički račun aktiviran",
+      "success"
+    );
+    loadUsers();
   }
 
   return (
@@ -267,7 +268,7 @@ export default function UsersPage() {
                 <label className="block text-ds-12 font-medium text-ds-text-primary mb-1.5">{editingId ? "Nova lozinka (prazno = bez promjene)" : "Lozinka"}</label>
                 <input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })}
                   className="w-full px-3 py-2.5 border border-ds-border rounded bg-white text-ds-14 text-ds-text-primary placeholder:text-ds-text-muted focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-colors"
-                  placeholder={editingId ? "Ostavite prazno ako ne mijenjate" : "Unesite lozinku"} required={!editingId} />
+                  placeholder={editingId ? "Ostavite prazno ako ne mijenjate" : `Najmanje ${MIN_PASSWORD_LENGTH} znakova`} required={!editingId} minLength={MIN_PASSWORD_LENGTH} autoComplete="new-password" />
               </div>
             </div>
             <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-ds-border-subtle">

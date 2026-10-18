@@ -158,18 +158,9 @@ CREATE POLICY "Allow all for authenticated" ON batch_orders FOR ALL USING (true)
 CREATE POLICY "Allow all for authenticated" ON batch_items FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all for authenticated" ON activity_logs FOR ALL USING (true) WITH CHECK (true);
 
--- Seed: create default admin user (password: admin123)
-INSERT INTO users (email, name, password_hash, role) VALUES (
-  'admin@libar.hr',
-  'Admin',
-  '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9',
-  'admin'
-);
-
--- Seed: create default picker user (password: picker123)
-INSERT INTO users (email, name, password_hash, role) VALUES (
-  'picker@libar.hr',
-  'Picker',
-  '5a7e575cadc6c94e81d64754326ff66e9e6d570a0588b1e5bf8fb1e210045487',
-  'picker'
-);
+-- No default users and no default passwords.
+-- Create the first administrator by hand:
+--   1. npm run user:hash-password   (asks for the password, prints a scrypt hash)
+--   2. INSERT INTO users (email, name, password_hash, role)
+--      VALUES ('<admin email>', '<name>', '<hash from step 1>', 'admin');
+-- Every further user is created in the app: Admin -> Korisnici -> Novi korisnik.
