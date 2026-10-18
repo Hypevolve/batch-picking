@@ -1,5 +1,9 @@
-import { NextResponse, type NextRequest } from "next/server";
-import { auth } from "@/lib/auth";
+import NextAuth from "next-auth";
+import { NextResponse } from "next/server";
+import { authConfig } from "@/lib/auth.config";
+
+// Edge-safe Auth.js instance: reads the session JWT only, no password hashing or DB access.
+const { auth } = NextAuth(authConfig);
 
 const PUBLIC_PATHS = ["/login", "/api/auth", "/api/webhooks", "/api/health"];
 const ADMIN_PATHS = ["/dashboard", "/batches", "/orders", "/locations", "/users"];

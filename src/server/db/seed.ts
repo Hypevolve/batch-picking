@@ -1,7 +1,17 @@
 import "dotenv/config";
 import { supabaseAdmin } from "./supabase-admin";
+import { hashPassword } from "../auth/password";
 
 async function seed() {
+  // Seed accounts get their passwords from the environment; there are no default passwords.
+  const adminPassword = process.env.SEED_ADMIN_PASSWORD;
+  const pickerPassword = process.env.SEED_PICKER_PASSWORD;
+  if (!adminPassword || !pickerPassword || adminPassword.length < 8 || pickerPassword.length < 8) {
+    console.error("❌ Set SEED_ADMIN_PASSWORD and SEED_PICKER_PASSWORD (at least 8 characters each). Nothing was changed.");
+    process.exitCode = 1;
+    return;
+  }
+
   console.log("🚀 Starting database seeding process...");
 
   // 1. Clean existing records (in dependency order)
@@ -35,14 +45,14 @@ async function seed() {
     {
       email: "admin@libar.hr",
       name: "Skladišni Administrator",
-      password_hash: "240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9", // admin123
+      password_hash: await hashPassword(adminPassword),
       role: "admin",
       active: true,
     },
     {
       email: "picker@libar.hr",
       name: "Operater Picker",
-      password_hash: "5a7e575cadc6c94e81d64754326ff66e9e6d570a0588b1e5bf8fb1e210045487", // picker123
+      password_hash: await hashPassword(pickerPassword),
       role: "picker",
       active: true,
     },
@@ -272,7 +282,7 @@ async function seed() {
   }
 
   console.log("✅ Seeding completed! Database is fully populated with 10 pending, highly overlapping orders.");
-  console.log("✨ You are ready to log in as 'admin@libar.hr' (pass: 'admin123') and test the smart batch algorithm!");
+  console.log("✨ You are ready to log in as 'admin@libar.hr' (password from SEED_ADMIN_PASSWORD) and test the smart batch algorithm!");
 }
 
 seed();
