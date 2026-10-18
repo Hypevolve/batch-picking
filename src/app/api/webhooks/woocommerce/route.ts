@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import crypto from "crypto";
 import { importSingleWooOrder } from "@/server/services/woo-sync";
+import { verifyWooWebhookSignature } from "@/server/services/woo-webhook-signature";
 import { supabaseAdmin } from "@/server/db/supabase-admin";
 import { type WooOrder } from "@/lib/woocommerce";
 
@@ -26,33 +26,26 @@ export async function POST(req: NextRequest) {
   let rawBody: string;
   try {
     rawBody = await req.text();
-  } catch (err) {
-    console.error("❌ Failed to read raw body:", err);
+  } catch {
+    console.error("❌ Failed to read webhook body.");
     return NextResponse.json({ error: "Invalid body" }, { status: 400 });
   }
 
-  // 2. Validate HMAC signature
-  const computedSignature = crypto
-    .createHmac("sha256", secret)
-    .update(rawBody, "utf8")
-    .digest("base64");
-
-  if (computedSignature !== signature) {
-    console.error("❌ Webhook signature verification failed.", {
-      received: signature,
-      computed: computedSignature,
-    });
+  // 2. Validate HMAC signature (constant time). Never log the signature, the secret or the body.
+  if (!verifyWooWebhookSignature(rawBody, signature, secret)) {
+    // Headers of an unauthenticated request are not logged either (log injection).
+    console.error("❌ Webhook signature verification failed.");
     return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
   }
 
   console.log(`✅ Webhook signature verified. ID: ${webhookId}, Topic: ${topic}`);
 
-  // 3. Parse payload
+  // 3. Parse payload (the parser's error message quotes the body, so it is not logged)
   let payload: WooOrder;
   try {
     payload = JSON.parse(rawBody);
-  } catch (err) {
-    console.error("❌ Failed to parse payload JSON:", err);
+  } catch {
+    console.error("❌ Webhook payload is not valid JSON.");
     return NextResponse.json({ error: "Invalid JSON payload" }, { status: 400 });
   }
 
