@@ -270,9 +270,11 @@ WOO_WEBHOOK_SECRET=your-webhook-secret
 # --- Sync ---
 SYNC_DAYS_BACK=7
 
-# --- Supabase ---
+# --- Supabase (samo server; preglednik ne zove Supabase, vidi docs/RLS-PRELAZAK.md) ---
 NEXT_PUBLIC_SUPABASE_URL=https://...supabase.co
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=eyJ...
+SUPABASE_SERVICE_ROLE_KEY=sb_secret_...
+# Samo prijelazno, dok SUPABASE_SERVICE_ROLE_KEY nije postavljen:
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
 
 # --- AI Asistent (opcionalno) ---
 OPENROUTER_API_KEY=sk-or-...
@@ -624,25 +626,24 @@ batch-picking/
 │   ├── lib/
 │   │   ├── auth.ts          # NextAuth config
 │   │   ├── woocommerce.ts   # WooCommerce client
-│   │   ├── trpc.ts          # tRPC client
+│   │   ├── trpc.ts          # tRPC client (React)
+│   │   ├── trpc-client.ts   # tRPC client za stranice (`api`); preglednik podatke dobiva samo ovuda
 │   │   └── utils.ts         # Helpers
 │   ├── server/
 │   │   ├── db/
 │   │   │   ├── schema.ts    # Drizzle schema
 │   │   │   ├── index.ts     # Connection
 │   │   │   ├── seed.ts      # Seed podaci (zone, lokacije, korisnici; lozinke iz SEED_ADMIN_PASSWORD / SEED_PICKER_PASSWORD)
-│   │   │   └── supabase-admin.ts
+│   │   │   └── supabase-admin.ts  # Jedini Supabase klijent: server-only, SUPABASE_SERVICE_ROLE_KEY
 │   │   ├── trpc/
 │   │   │   ├── init.ts      # Context + procedures
-│   │   │   ├── router.ts    # App router (batches, orders, locations, ai)
-│   │   │   └── routers/     # Batches, Orders, Locations, AI
+│   │   │   ├── router.ts    # App router (dashboard, batches, orders, locations, users, ai)
+│   │   │   └── routers/     # Dashboard, Batches, Orders, Locations, Users, AI
 │   │   └── services/
 │   │       ├── batch-engine.ts   # Zone v3 + SKU v2 grupiranje
 │   │       ├── woo-sync.ts       # WooCommerce sync
 │   │       ├── ai-service.ts     # OpenRouter AI asistent
 │   │       └── status.ts         # Batch status workflow
-│   └── utils/
-│       └── supabase/        # Supabase client helpers
 ├── tests/
 │   └── unit/
 │       └── batch-engine.test.ts  # 26 unit testova
@@ -650,7 +651,8 @@ batch-picking/
 │   ├── schema.sql           # SQL schema
 │   └── migrations/
 │       ├── 0001_add_author_columns.sql
-│       └── 0002_add_missing_zones.sql
+│       ├── 0002_add_missing_zones.sql
+│       └── 0003_lock_rls.sql      # Zaključava tablice (vidi docs/RLS-PRELAZAK.md)
 ├── .env.example             # Primjer env varijabli
 ├── render.yaml              # Render deploy konfiguracija
 ├── README.md                # Pregled projekta

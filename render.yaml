@@ -32,3 +32,7 @@ services:
         sync: false
       - key: NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
         sync: false
+      # Server-only Supabase key (secret / service_role). Set it before running
+      # supabase/migrations/0003_lock_rls.sql; see docs/RLS-PRELAZAK.md.
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false

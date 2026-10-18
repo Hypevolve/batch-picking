@@ -134,7 +134,12 @@ CREATE TABLE activity_logs (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Enable Row Level Security on all tables
+-- Row Level Security: on for every table, with no policies. The publishable
+-- key (roles anon / authenticated) gets no rows and no privileges; the app
+-- reads and writes only on the server, as service_role (SUPABASE_SERVICE_ROLE_KEY),
+-- which bypasses RLS. An existing database is brought to this state by
+-- supabase/migrations/0003_lock_rls.sql (see docs/RLS-PRELAZAK.md).
+-- A new table needs the same three steps: ENABLE RLS, REVOKE, GRANT.
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE products ENABLE ROW LEVEL SECURITY;
 ALTER TABLE product_locations ENABLE ROW LEVEL SECURITY;
@@ -146,17 +151,22 @@ ALTER TABLE batch_orders ENABLE ROW LEVEL SECURITY;
 ALTER TABLE batch_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE activity_logs ENABLE ROW LEVEL SECURITY;
 
--- Allow full access for authenticated users (we handle auth in the app layer)
-CREATE POLICY "Allow all for authenticated" ON users FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow all for authenticated" ON products FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow all for authenticated" ON product_locations FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow all for authenticated" ON picking_routes FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow all for authenticated" ON orders FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow all for authenticated" ON order_items FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow all for authenticated" ON batches FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow all for authenticated" ON batch_orders FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow all for authenticated" ON batch_items FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow all for authenticated" ON activity_logs FOR ALL USING (true) WITH CHECK (true);
+REVOKE ALL ON TABLE users, products, product_locations, picking_routes, orders,
+  order_items, batches, batch_orders, batch_items, activity_logs
+  FROM anon, authenticated, PUBLIC;
+REVOKE ALL ON SEQUENCE users_id_seq, products_id_seq, product_locations_id_seq,
+  picking_routes_id_seq, orders_id_seq, order_items_id_seq, batches_id_seq,
+  batch_orders_id_seq, batch_items_id_seq, activity_logs_id_seq
+  FROM anon, authenticated, PUBLIC;
+
+GRANT ALL ON TABLE users, products, product_locations, picking_routes, orders,
+  order_items, batches, batch_orders, batch_items, activity_logs
+  TO service_role;
+GRANT USAGE, SELECT, UPDATE ON SEQUENCE users_id_seq, products_id_seq,
+  product_locations_id_seq, picking_routes_id_seq, orders_id_seq,
+  order_items_id_seq, batches_id_seq, batch_orders_id_seq, batch_items_id_seq,
+  activity_logs_id_seq
+  TO service_role;
 
 -- No default users and no default passwords.
 -- Create the first administrator by hand:
