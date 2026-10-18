@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { createClient } from "@/utils/supabase/client";
+import { api } from "@/lib/trpc-client";
 import { Layers, Plus, ChevronRight, RefreshCw, CheckCircle2, AlertCircle, Clock3, Play, Package, Trash2 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import Link from "next/link";
@@ -71,12 +71,11 @@ export default function BatchesPage() {
   }, []);
 
   async function loadBatches() {
-    const supabase = createClient();
-    const { data } = await supabase
-      .from("batches")
-      .select("*")
-      .order("generated_at", { ascending: false });
-    setBatches(data || []);
+    try {
+      setBatches(await api.batches.list.query());
+    } catch (err) {
+      console.error("Učitavanje batcheva nije uspjelo", err);
+    }
     setLoading(false);
   }
 

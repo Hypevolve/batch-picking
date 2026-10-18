@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
-import { createClient } from "@/utils/supabase/client";
+import { api, apiErrorMessage } from "@/lib/trpc-client";
 import {
   MapPin,
   Plus,
@@ -40,6 +40,7 @@ const emptyForm: LocationForm = {
 };
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
+const CSV_CHUNK_SIZE = 200;
 
 export default function LocationsPage() {
   const [locations, setLocations] = useState<ProductLocation[]>([]);
@@ -77,12 +78,11 @@ export default function LocationsPage() {
   }, []);
 
   async function loadLocations() {
-    const supabase = createClient();
-    const { data } = await supabase
-      .from("product_locations")
-      .select("*")
-      .order("route_position", { ascending: true });
-    setLocations(data || []);
+    try {
+      setLocations(await api.locations.list.query());
+    } catch (err) {
+      console.error("Učitavanje lokacija nije uspjelo", err);
+    }
     setLoading(false);
   }
 
@@ -106,37 +106,26 @@ export default function LocationsPage() {
   async function handleSave() {
     if (!form.sku || !form.zone_code || !form.shelf_code) return;
     setSaving(true);
-    const supabase = createClient();
+    const fields = {
+      sku: form.sku,
+      zoneCode: form.zone_code,
+      shelfCode: form.shelf_code,
+      routePosition: form.route_position,
+    };
 
     if (editingId) {
-      const { error } = await supabase
-        .from("product_locations")
-        .update({
-          sku: form.sku,
-          zone_code: form.zone_code,
-          shelf_code: form.shelf_code,
-          route_position: form.route_position,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", editingId);
-
-      if (error) {
-        showToast("Greška pri ažuriranju: " + error.message, "error");
-      } else {
+      try {
+        await api.locations.update.mutate({ id: editingId, ...fields });
         showToast("Lokacija uspješno ažurirana", "success");
+      } catch (err) {
+        showToast("Greška pri ažuriranju: " + apiErrorMessage(err), "error");
       }
     } else {
-      const { error } = await supabase.from("product_locations").insert({
-        sku: form.sku,
-        zone_code: form.zone_code,
-        shelf_code: form.shelf_code,
-        route_position: form.route_position,
-      });
-
-      if (error) {
-        showToast("Greška pri dodavanju: " + error.message, "error");
-      } else {
+      try {
+        await api.locations.create.mutate(fields);
         showToast("Nova lokacija dodana", "success");
+      } catch (err) {
+        showToast("Greška pri dodavanju: " + apiErrorMessage(err), "error");
       }
     }
 
@@ -147,17 +136,12 @@ export default function LocationsPage() {
 
   async function handleDelete(id: number) {
     if (!confirm("Jeste li sigurni da želite obrisati ovu lokaciju?")) return;
-    const supabase = createClient();
-    const { error } = await supabase
-      .from("product_locations")
-      .delete()
-      .eq("id", id);
-
-    if (error) {
-      showToast("Greška pri brisanju: " + error.message, "error");
-    } else {
+    try {
+      await api.locations.delete.mutate({ id });
       showToast("Lokacija uspješno obrisana", "success");
       loadLocations();
+    } catch (err) {
+      showToast("Greška pri brisanju: " + apiErrorMessage(err), "error");
     }
   }
 
@@ -197,10 +181,10 @@ export default function LocationsPage() {
       return;
     }
 
-    const supabase = createClient();
     let created = 0;
     let updated = 0;
     const errors: string[] = [];
+    const rows: Array<{ row: number; sku: string; zoneCode: string; shelfCode: string; routePosition: number }> = [];
 
     for (let i = 1; i < lines.length; i++) {
       const cols = lines[i].split(/[,;\t]/);
@@ -213,37 +197,23 @@ export default function LocationsPage() {
         errors.push(`Red ${i + 1}: nedostaju podaci`);
         continue;
       }
+      if (pos < 0) {
+        errors.push(`Red ${i + 1} (${sku}): pozicija ne smije biti negativna`);
+        continue;
+      }
+      rows.push({ row: i + 1, sku, zoneCode: zone, shelfCode: shelf, routePosition: pos });
+    }
 
-      const { data: existing } = await supabase
-        .from("product_locations")
-        .select("id")
-        .eq("sku", sku)
-        .limit(1)
-        .single();
-
-      if (existing) {
-        await supabase
-          .from("product_locations")
-          .update({
-            zone_code: zone,
-            shelf_code: shelf,
-            route_position: pos,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", existing.id);
-        updated++;
-      } else {
-        const { error } = await supabase.from("product_locations").insert({
-          sku,
-          zone_code: zone,
-          shelf_code: shelf,
-          route_position: pos,
-        });
-        if (error) {
-          errors.push(`Red ${i + 1} (${sku}): ${error.message}`);
-        } else {
-          created++;
-        }
+    // The server takes at most 500 rows per call.
+    for (let start = 0; start < rows.length; start += CSV_CHUNK_SIZE) {
+      const chunk = rows.slice(start, start + CSV_CHUNK_SIZE);
+      try {
+        const result = await api.locations.bulkImport.mutate(chunk);
+        created += result.created;
+        updated += result.updated;
+        errors.push(...result.errors);
+      } catch (err) {
+        errors.push(`Redovi ${chunk[0].row}–${chunk[chunk.length - 1].row}: ${apiErrorMessage(err)}`);
       }
     }
 

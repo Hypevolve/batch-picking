@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { createClient } from "@/utils/supabase/client";
+import { api } from "@/lib/trpc-client";
 import { cn } from "@/lib/utils";
 
 interface DashStats {
@@ -105,24 +105,20 @@ export default function AdminDashboardPage() {
   const [activities, setActivities] = useState<ActivityLogItem[]>([]);
 
   const loadStats = async () => {
-    const supabase = createClient();
-    const [o, b, p, pk] = await Promise.all([
-      supabase.from("orders").select("id", { count: "exact", head: true }),
-      supabase.from("batches").select("id", { count: "exact", head: true }),
-      supabase.from("batches").select("id", { count: "exact", head: true }).eq("status", "picked"),
-      supabase.from("batches").select("id", { count: "exact", head: true }).eq("status", "packed"),
-    ]);
-    setStats({ orders: o.count || 0, batches: b.count || 0, picked: p.count || 0, packed: pk.count || 0 });
+    try {
+      setStats(await api.dashboard.stats.query());
+    } catch (err) {
+      console.error("Učitavanje statistike nije uspjelo", err);
+    }
   };
 
   const loadActivities = async () => {
-    const supabase = createClient();
-    const { data: logs } = await supabase
-      .from("activity_logs")
-      .select("id, user_id, entity_type, entity_id, action, details, created_at, users(name)")
-      .order("created_at", { ascending: false })
-      .limit(12);
-    if (logs) setActivities(logs.map(mapDBLogToActivity));
+    try {
+      const logs = await api.dashboard.recentActivity.query();
+      setActivities(logs.map(mapDBLogToActivity));
+    } catch (err) {
+      console.error("Učitavanje aktivnosti nije uspjelo", err);
+    }
   };
 
   useEffect(() => {

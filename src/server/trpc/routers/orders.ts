@@ -1,10 +1,36 @@
 import { z } from "zod";
-import { router, protectedProcedure, adminProcedure } from "../init";
+import { TRPCError } from "@trpc/server";
+import { router, adminProcedure } from "../init";
 import { supabaseAdmin } from "@/server/db/supabase-admin";
 import { syncOrders } from "@/server/services/woo-sync";
 
+/** Columns the Narudžbe table shows. */
+const ORDER_LIST_COLUMNS = "id, woo_order_id, customer_name, status, woo_status, synced_at";
+
+// Orders hold customer data: every procedure here is admin-only.
 export const ordersRouter = router({
-  list: protectedProcedure
+  // Admin: Narudžbe, one page at a time, newest sync first.
+  page: adminProcedure
+    .input(
+      z.object({
+        page: z.number().int().min(1),
+        pageSize: z.number().int().min(1).max(100),
+      })
+    )
+    .query(async ({ input }) => {
+      const start = (input.page - 1) * input.pageSize;
+      const { data, count, error } = await supabaseAdmin
+        .from("orders")
+        .select(ORDER_LIST_COLUMNS, { count: "exact" })
+        .order("synced_at", { ascending: false })
+        .range(start, start + input.pageSize - 1);
+      // Page past the end (orders were deleted meanwhile): empty page, the screen goes back to page 1.
+      if (error?.code === "PGRST103") return { orders: [], total: 0 };
+      if (error) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: error.message });
+      return { orders: data ?? [], total: count ?? 0 };
+    }),
+
+  list: adminProcedure
     .input(
       z
         .object({
@@ -29,7 +55,7 @@ export const ordersRouter = router({
       return data;
     }),
 
-  getById: protectedProcedure
+  getById: adminProcedure
     .input(z.object({ id: z.number() }))
     .query(async ({ input }) => {
       const { data: order } = await supabaseAdmin

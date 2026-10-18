@@ -2,7 +2,7 @@
 
 import { Package, Play, CheckCircle2, Clock, ChevronRight, Layers, RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
-import { createClient } from "@/utils/supabase/client";
+import { api } from "@/lib/trpc-client";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 
@@ -33,19 +33,13 @@ export default function PickerHomePage() {
 
   useEffect(() => {
     async function fetchData() {
-      const supabase = createClient();
-      const [ready, inProgress, done, batchList] = await Promise.all([
-        supabase.from("batches").select("id", { count: "exact", head: true }).eq("status", "ready"),
-        supabase.from("batches").select("id", { count: "exact", head: true }).eq("status", "in_progress"),
-        supabase.from("batches").select("id", { count: "exact", head: true }).in("status", ["picked", "packed", "synced"]),
-        supabase
-          .from("batches")
-          .select("id, batch_code, batch_type, status, order_count, total_items, total_quantity")
-          .in("status", ["ready", "in_progress"])
-          .order("generated_at", { ascending: false }),
-      ]);
-      setCounts({ ready: ready.count || 0, in_progress: inProgress.count || 0, done: done.count || 0 });
-      setBatches(batchList.data || []);
+      try {
+        const overview = await api.batches.pickerOverview.query();
+        setCounts(overview.counts);
+        setBatches(overview.batches);
+      } catch (err) {
+        console.error("Učitavanje naloga nije uspjelo", err);
+      }
       setLoading(false);
     }
     fetchData();
