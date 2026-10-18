@@ -1,13 +1,8 @@
 /** Nađi STVARNE parove narudžbi koje dijele iste/većinu knjiga (SKU Jaccard ≥ 0.5). Read-only. */
-import { readFileSync } from "node:fs";
-import { createClient } from "@supabase/supabase-js";
+// Run: npx tsx --conditions=react-server scripts/find-duplicate-orders.ts [N]  (needs SUPABASE_SERVICE_ROLE_KEY in .env.local)
+import "./load-env-local";
+import { supabaseAdmin as supabase } from "../src/server/db/supabase-admin";
 import { calculateJaccardSimilarity } from "../src/server/services/batch-engine";
-
-for (const line of readFileSync(".env.local", "utf8").split("\n")) {
-  const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/);
-  if (m && !process.env[m[1]]) process.env[m[1]] = m[2].replace(/^["']|["']$/g, "");
-}
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!);
 const EXCLUDED = new Set(["9075"]);
 const N = parseInt(process.argv[2] || "1000", 10);
 

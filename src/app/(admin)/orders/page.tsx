@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/utils/supabase/client";
+import { api } from "@/lib/trpc-client";
 import { ShoppingCart, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -39,16 +39,15 @@ export default function OrdersPage() {
   useEffect(() => {
     async function load() {
       setLoading(true);
-      const supabase = createClient();
-      const start = (pageSafe - 1) * pageSize;
-      const end = start + pageSize - 1;
-      const { data, count } = await supabase
-        .from("orders")
-        .select("*", { count: "exact" })
-        .order("synced_at", { ascending: false })
-        .range(start, end);
-      setOrders(data || []);
-      setTotalCount(count || 0);
+      try {
+        const result = await api.orders.page.query({ page: pageSafe, pageSize });
+        setOrders(result.orders);
+        setTotalCount(result.total);
+      } catch (err) {
+        console.error("Učitavanje narudžbi nije uspjelo", err);
+        setOrders([]);
+        setTotalCount(0);
+      }
       setLoading(false);
     }
     load();

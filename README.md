@@ -106,12 +106,12 @@ batch-picking/
 │   │   └── providers/       # Theme provider, Session provider
 │   ├── lib/                 # Auth, WooCommerce client, tRPC client, utils
 │   ├── server/
-│   │   ├── db/              # Drizzle ORM schema, Supabase admin client, seed
-│   │   ├── trpc/            # tRPC init, app router, routers (batches, orders, locations, ai)
+│   │   ├── db/              # Drizzle ORM schema, Supabase klijent (samo server), seed
+│   │   ├── trpc/            # tRPC init, app router, routers (dashboard, batches, orders, locations, users, ai)
 │   │   └── services/        # batch-engine, woo-sync, ai-service, status
-│   └── utils/
 ├── tests/unit/              # 26 unit testova (batch-engine)
 ├── supabase/                # SQL schema + migracije
+├── docs/RLS-PRELAZAK.md     # Zaključavanje tablica: redoslijed deploya
 ├── render.yaml              # Render deploy konfiguracija
 ├── DEVELOPER.md             # Tehnička dokumentacija
 └── USER_GUIDE.md            # Upute za skladište
@@ -346,7 +346,7 @@ Aplikacija nema zadanih korisnika ni zadanih lozinki. Lozinke se spremaju kao sc
    ```
 3. Prijavi se kao taj administrator. Sve ostale korisnike dodaje administrator u aplikaciji: **Korisnici → Novi korisnik** (email, ime, uloga, lozinka od najmanje 8 znakova). Lozinku postojećem korisniku mijenja u **Korisnici → Uredi → Nova lozinka**.
 
-Za lokalni razvoj `src/server/db/seed.ts` čita lozinke iz `SEED_ADMIN_PASSWORD` i `SEED_PICKER_PASSWORD`. Seed briše sve tablice, pa se nikad ne pokreće prema produkcijskoj bazi.
+Za lokalni razvoj `src/server/db/seed.ts` (`npx tsx --conditions=react-server src/server/db/seed.ts`) čita lozinke iz `SEED_ADMIN_PASSWORD` i `SEED_PICKER_PASSWORD`. Seed briše sve tablice, pa se nikad ne pokreće prema produkcijskoj bazi.
 
 Stari SHA-256 hashevi i dalje rade: pri prvoj uspješnoj prijavi korisnika zamjenjuju se scrypt hashom.
 
@@ -364,8 +364,9 @@ Stari SHA-256 hashevi i dalje rade: pri prvoj uspješnoj prijavi korisnika zamje
 | `WOO_CONSUMER_SECRET` | WooCommerce API secret | `cs_...` |
 | `WOO_WEBHOOK_SECRET` | WooCommerce webhook HMAC secret | `...` |
 | `SYNC_DAYS_BACK` | Koliko dana unazad sinkronizirati | `7` |
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase projekt URL | `https://...supabase.co` |
-| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Supabase anon key | `eyJ...` |
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase projekt URL (koristi ga samo server) | `https://...supabase.co` |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase secret / service_role ključ; samo server, nikad s prefiksom `NEXT_PUBLIC_` (vidi [docs/RLS-PRELAZAK.md](docs/RLS-PRELAZAK.md)) | `sb_secret_...` |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Supabase publishable/anon ključ; samo prijelazna zamjena dok `SUPABASE_SERVICE_ROLE_KEY` nije postavljen, preglednik ga ne koristi | `sb_publishable_...` |
 | `OPENROUTER_API_KEY` | OpenRouter API ključ (za AI asistenta) | `sk-or-...` |
 | `OPENROUTER_MODEL` | Primarni AI model | `openai/gpt-4.1-mini` |
 | `OPENROUTER_FALLBACK_MODEL` | Fallback AI model | `google/gemini-2.5-flash` |

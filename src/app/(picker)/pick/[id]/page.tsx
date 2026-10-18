@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { createClient } from "@/utils/supabase/client";
+import { api, apiErrorMessage } from "@/lib/trpc-client";
 import {
   ArrowLeft,
   CheckCircle2,
@@ -63,41 +63,25 @@ export default function PickingPage() {
   }, [batchId]);
 
   async function loadData() {
-    const supabase = createClient();
+    try {
+      const view = await api.batches.pickerView.query({ id: batchId });
+      if (!view) {
+        setLoading(false);
+        return;
+      }
+      const b: BatchInfo = view.batch;
 
-    const { data: b } = await supabase
-      .from("batches")
-      .select("id, batch_code, status, order_count, total_items, total_quantity")
-      .eq("id", batchId)
-      .single();
+      // Auto-transition status to in_progress if currently ready
+      if (b.status === "ready") {
+        const started = await api.batches.updateStatus.mutate({ batchId, status: "in_progress" });
+        if (started.success) b.status = "in_progress";
+      }
 
-    if (!b) {
-      setLoading(false);
-      return;
+      setBatch(b);
+      setItems(view.items);
+    } catch (err) {
+      console.error("Učitavanje naloga nije uspjelo", err);
     }
-
-    // Auto-transition status to in_progress if currently ready
-    if (b.status === "ready") {
-      await supabase
-        .from("batches")
-        .update({
-          status: "in_progress",
-          started_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", batchId);
-      b.status = "in_progress";
-    }
-
-    setBatch(b);
-
-    const { data: bi } = await supabase
-      .from("batch_items")
-      .select("*")
-      .eq("batch_id", batchId)
-      .order("route_position", { ascending: true });
-
-    setItems(bi || []);
     setLoading(false);
   }
 
@@ -110,39 +94,30 @@ export default function PickingPage() {
       prev.map((i) => (i.id === itemId ? { ...i, is_picked: newPicked } : i))
     );
 
-    const supabase = createClient();
-    await supabase
-      .from("batch_items")
-      .update({ is_picked: newPicked })
-      .eq("id", itemId);
+    try {
+      await api.batches.markItemPicked.mutate({ itemId, picked: newPicked });
+    } catch (err) {
+      // Not saved: put the checkbox back so the screen matches the database.
+      setItems((prev) =>
+        prev.map((i) => (i.id === itemId ? { ...i, is_picked: !newPicked } : i))
+      );
+      alert("Stavka nije spremljena: " + apiErrorMessage(err));
+    }
   }
 
   async function completeBatch() {
     setCompleting(true);
-    const supabase = createClient();
-    await supabase
-      .from("batches")
-      .update({
-        status: "picked",
-        completed_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", batchId);
-
-    // Update all related orders to picked
-    const { data: batchOrders } = await supabase
-      .from("batch_orders")
-      .select("order_id")
-      .eq("batch_id", batchId);
-
-    for (const bo of batchOrders || []) {
-      await supabase
-        .from("orders")
-        .update({ status: "picked", updated_at: new Date().toISOString() })
-        .eq("id", bo.order_id);
+    try {
+      // Server side this also marks every order of the batch as picked.
+      const result = await api.batches.updateStatus.mutate({ batchId, status: "picked" });
+      if (result.success) {
+        setShowComplete(true);
+      } else {
+        alert("Nalog nije završen: " + (result.error ?? "nepoznata greška"));
+      }
+    } catch (err) {
+      alert("Nalog nije završen: " + apiErrorMessage(err));
     }
-
-    setShowComplete(true);
     setCompleting(false);
   }
 

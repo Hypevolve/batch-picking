@@ -2,12 +2,13 @@
  * DRY-RUN: usporedi staru vs novu logiku grupiranja batcheva na STVARNIM podacima.
  * Ne piše ništa u bazu — samo ispisuje kako bi narudžbe bile grupirane.
  *
- * Pokretanje:
- *   npx tsx scripts/dry-run-batches.ts
- *   npx tsx scripts/dry-run-batches.ts --recent 80   (simulacija na zadnjih N narudžbi bilo kojeg statusa)
+ * Pokretanje (treba SUPABASE_SERVICE_ROLE_KEY u .env.local; --conditions=react-server
+ * jer je Supabase klijent označen sa "server-only"):
+ *   npx tsx --conditions=react-server scripts/dry-run-batches.ts
+ *   npx tsx --conditions=react-server scripts/dry-run-batches.ts --recent 80   (simulacija na zadnjih N narudžbi bilo kojeg statusa)
  */
-import { readFileSync } from "node:fs";
-import { createClient } from "@supabase/supabase-js";
+import "./load-env-local";
+import { supabaseAdmin as supabase } from "../src/server/db/supabase-admin";
 import {
   buildZoneProfiles,
   zoneBasedGroupOrders,
@@ -16,17 +17,6 @@ import {
   zonesAreAdjacent,
   calculateZoneJaccard,
 } from "../src/server/services/batch-engine";
-
-// ── mini .env.local loader ──────────────────────────────────────────────
-for (const line of readFileSync(".env.local", "utf8").split("\n")) {
-  const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/);
-  if (m && !process.env[m[1]]) process.env[m[1]] = m[2].replace(/^["']|["']$/g, "");
-}
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
-);
 
 const EXCLUDED = new Set(["9075"]);
 const recentArg = process.argv.indexOf("--recent");
