@@ -127,9 +127,12 @@ Trenutno definirane zone:
 ### Upravljanje korisnicima
 
 1. Odi na **Korisnici** u admin panelu
-2. Dodaj novog korisnika (email, ime, uloga, lozinka)
+2. Dodaj novog korisnika (email, ime, uloga, lozinka od najmanje 8 znakova)
 3. Uloge: **Admin** (puni pristup) ili **Picker** (samo skupljanje)
-4. Mozes deaktivirati korisnika bez brisanja
+4. Lozinku mijenjas u **Uredi → Nova lozinka**; prazno polje ostavlja staru lozinku
+5. Mozes deaktivirati korisnika bez brisanja
+
+Zadanih lozinki nema: lozinku svakom korisniku postavlja administrator.
 
 ### Status batcha
 

@@ -68,7 +68,7 @@
 
 | Tablica | Opis |
 |---------|------|
-| `users` | Admin i picker korisnici (email, password_hash, role, active) |
+| `users` | Admin i picker korisnici (email, password_hash, role, active). `password_hash` je `scrypt$N$r$p$sol$hash` (`src/server/auth/password.ts`); stari SHA-256 hashevi zamjenjuju se scryptom pri prvoj uspješnoj prijavi |
 | `products` | Cache WooCommerce proizvoda (sku, title, image_url, author) |
 | `product_locations` | Skladišne lokacije po SKU (zone_code, shelf_code, route_position) |
 | `picking_routes` | Konfiguracija zona (zone_code, zone_name, sort_order) |
@@ -233,17 +233,19 @@ const BASKET_LABELS = ["A", "B", "C", "D", "E"] as const;
 |------|------|
 | `/api/trpc/[trpc]` | tRPC JSON-RPC handler |
 
+`users.*` (list, create, update, setActive) je samo za admina. Lozinke se hashiraju na serveru; `users.list` nikad ne vraća `password_hash`.
+
 ### Webhooks
 
 | Ruta | Metoda | Opis |
 |------|--------|------|
-| `/api/webhooks/woocommerce` | `POST` | Primanje WooCommerce webhook događaja (HMAC-SHA256 verifikacija) |
+| `/api/webhooks/woocommerce` | `POST` | Primanje WooCommerce webhook događaja (HMAC-SHA256 verifikacija u konstantnom vremenu) |
 
 ### Health
 
 | Ruta | Metoda | Opis |
 |------|--------|------|
-| `/api/health` | `GET` | Health check za deployment monitoring |
+| `/api/health` | `GET` | Health check: `{"status":"ok","version":"<package.json>","commit":"<RENDER_GIT_COMMIT ili null>"}` |
 
 ---
 
@@ -325,7 +327,7 @@ export function extractAuthor(product: WooProduct): string | null {
 
 ### Webhook
 
-WooCommerce webhook šalje `POST` na `/api/webhooks/woocommerce` kada se narudžba promijeni. Handler verificira HMAC-SHA256 potpis i poziva `importSingleWooOrder()`.
+WooCommerce webhook šalje `POST` na `/api/webhooks/woocommerce` kada se narudžba promijeni. Handler verificira HMAC-SHA256 potpis (`timingSafeEqual`, potpis krive duljine odbija se odmah) i poziva `importSingleWooOrder()`. Potpis, secret i tijelo zahtjeva nikad se ne logiraju.
 
 Podržani webhook topici:
 - `order.created` (status: processing) → uvoz narudžbe
@@ -487,7 +489,7 @@ npm run test         # Watch mode
 ### Lokalno testiranje API-ja
 
 ```bash
-# Health check
+# Health check (vraća verziju i commit koji je deployan)
 curl http://localhost:3001/api/health
 
 # WooCommerce sync (admin)
@@ -628,7 +630,7 @@ batch-picking/
 │   │   ├── db/
 │   │   │   ├── schema.ts    # Drizzle schema
 │   │   │   ├── index.ts     # Connection
-│   │   │   ├── seed.ts      # Seed podaci (zone, lokacije, korisnici)
+│   │   │   ├── seed.ts      # Seed podaci (zone, lokacije, korisnici; lozinke iz SEED_ADMIN_PASSWORD / SEED_PICKER_PASSWORD)
 │   │   │   └── supabase-admin.ts
 │   │   ├── trpc/
 │   │   │   ├── init.ts      # Context + procedures

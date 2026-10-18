@@ -331,14 +331,24 @@ npm run dev -- --port 3001
 
 Otvori [http://localhost:3001](http://localhost:3001).
 
-### Default login
+### Prvi administrator i lozinke
 
-| Uloga | Email | Lozinka |
-|-------|-------|---------|
-| Admin | `admin@libar.hr` | `admin123` |
-| Picker | `picker@libar.hr` | `picker123` |
+Aplikacija nema zadanih korisnika ni zadanih lozinki. Lozinke se spremaju kao scrypt hash sa solju po korisniku i nikad se ne pišu u kod ni u dokumentaciju.
 
-**Promijeni lozinke odmah nakon prvog pokretanja!**
+1. Napravi hash lozinke za prvog administratora (lozinka se ne prikazuje dok je tipkaš, skripta se ne spaja na bazu):
+   ```bash
+   npm run user:hash-password
+   ```
+2. U Supabase SQL editoru upiši administratora s tim hashom:
+   ```sql
+   INSERT INTO users (email, name, password_hash, role)
+   VALUES ('<email administratora>', '<ime>', '<hash iz koraka 1>', 'admin');
+   ```
+3. Prijavi se kao taj administrator. Sve ostale korisnike dodaje administrator u aplikaciji: **Korisnici → Novi korisnik** (email, ime, uloga, lozinka od najmanje 8 znakova). Lozinku postojećem korisniku mijenja u **Korisnici → Uredi → Nova lozinka**.
+
+Za lokalni razvoj `src/server/db/seed.ts` čita lozinke iz `SEED_ADMIN_PASSWORD` i `SEED_PICKER_PASSWORD`. Seed briše sve tablice, pa se nikad ne pokreće prema produkcijskoj bazi.
+
+Stari SHA-256 hashevi i dalje rade: pri prvoj uspješnoj prijavi korisnika zamjenjuju se scrypt hashom.
 
 ---
 
@@ -474,7 +484,8 @@ Prije generiranja batch-eva, admin mora definirati lokacije proizvoda:
 ### Login ne radi
 
 1. Provjeri `NEXTAUTH_SECRET` i `NEXTAUTH_URL`
-2. Pogledaj [DEVELOPER.md](DEVELOPER.md) za debug upute
+2. Provjeri je li korisnik aktivan (**Korisnici**); zaboravljenu lozinku administrator postavlja u **Korisnici → Uredi → Nova lozinka**
+3. Pogledaj [DEVELOPER.md](DEVELOPER.md) za debug upute
 
 ---
 
