@@ -1,3 +1,4 @@
+// Run: npx tsx --conditions=react-server src/server/db/seed.ts  (local database only: it deletes every table)
 import "dotenv/config";
 import { supabaseAdmin } from "./supabase-admin";
 import { hashPassword } from "../auth/password";
